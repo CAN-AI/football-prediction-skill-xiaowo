@@ -1,0 +1,52 @@
+{
+  "source": "distilled-local-history",
+  "note": "This inventory is a public-safe summary distilled from historical local model-input/model-output files. It does not include private paths or raw source data.",
+  "counts": {
+    "modelInputSnapshots": 18,
+    "standardPredictionJson": 54,
+    "scenarioJson": 4,
+    "predictionMarkdown": 12,
+    "predictionsWithContextSummary": 30,
+    "knockoutPredictionsWithAdvanceResult": 4
+  },
+  "predictionDistribution": {
+    "averageStrongestOutcomeProbability": 0.5452,
+    "confidence": {
+      "high": 27,
+      "medium": 20,
+      "low": 7
+    },
+    "upsetRisk": {
+      "low": 29,
+      "medium": 24,
+      "high": 1
+    },
+    "favoriteOutcome": {
+      "home": 29,
+      "draw": 5,
+      "away": 20
+    }
+  },
+  "caseStudies": [
+    {
+      "matchId": "ARG-ALG-2026-06-17",
+      "summary": "Argentina home-win direction was favored at 57.2%; the 3+ goals scenario included 3-0.",
+      "homeWin90Prob": 0.5717,
+      "draw90Prob": 0.2545,
+      "awayWin90Prob": 0.1737,
+      "expectedGoals": "1.76-0.88",
+      "scenarioOver25Prob": 0.4922,
+      "scenarioScorelineHit": "3-0"
+    },
+    {
+      "matchId": "AUT-JOR-2026-06-17",
+      "summary": "Austria home-win direction was favored at 59.8%; the 3+ goals scenario included 3-1.",
+      "homeWin90Prob": 0.5982,
+      "draw90Prob": 0.2501,
+      "awayWin90Prob": 0.1517,
+      "expectedGoals": "1.78-0.79",
+      "scenarioOver25Prob": 0.4741,
+      "scenarioScorelineHit": "3-1"
+    }
+  ]
+}

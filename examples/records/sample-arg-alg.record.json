@@ -1,0 +1,76 @@
+{
+  "matchId": "ARG-ALG-2026-06-17",
+  "recordedAt": "2026-07-04T16:20:15.208Z",
+  "resultScope": "90minResult",
+  "actualScore90min": {
+    "home": 3,
+    "away": 0
+  },
+  "actualOutcome": "home",
+  "actualOutcomeLabel": "主胜",
+  "predictedOutcome": "home",
+  "predictedOutcomeLabel": "主胜",
+  "hitOutcome": true,
+  "hitExactScore": false,
+  "actualScoreRank": 6,
+  "brierScore": 0.3042,
+  "predictionSummary": {
+    "homeWin90Prob": 0.5506,
+    "draw90Prob": 0.2499,
+    "awayWin90Prob": 0.1995,
+    "expectedGoalsHome": 1.78,
+    "expectedGoalsAway": 0.99,
+    "topScorelines": [
+      {
+        "scoreline": {
+          "home": 1,
+          "away": 1
+        },
+        "probability": 0.1192
+      },
+      {
+        "scoreline": {
+          "home": 1,
+          "away": 0
+        },
+        "probability": 0.1033
+      },
+      {
+        "scoreline": {
+          "home": 2,
+          "away": 0
+        },
+        "probability": 0.0996
+      },
+      {
+        "scoreline": {
+          "home": 2,
+          "away": 1
+        },
+        "probability": 0.0983
+      },
+      {
+        "scoreline": {
+          "home": 0,
+          "away": 0
+        },
+        "probability": 0.0716
+      }
+    ]
+  },
+  "correctionHints": [
+    "主队优势被低估：可考虑在下一版快照中结构化调整主队 formScore 或 attackMultiplier。"
+  ],
+  "revisionTemplate": {
+    "scope": "match_or_team",
+    "derivation": "manual_review",
+    "humanReviewed": true,
+    "reason": "赛后复盘后再填写具体原因。",
+    "impact": {
+      "formScoreDelta": 0,
+      "attackMultiplier": 1,
+      "defenseMultiplier": 1
+    }
+  },
+  "disclaimer": "复盘用于改进模型，不用于追涨杀跌或事后改写已发布预测。"
+}

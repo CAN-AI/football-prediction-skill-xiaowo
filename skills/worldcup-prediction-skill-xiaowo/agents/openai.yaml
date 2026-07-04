@@ -1,0 +1,8 @@
+interface:
+  display_name: "世界杯预测模型小蜗版"
+  short_description: "面向国内 agent 的可审计世界杯概率预测 harness"
+  brand_color: "#2F6BFF"
+  default_prompt: "Use $worldcup-prediction-skill-xiaowo to audit a match snapshot and generate a cautious World Cup prediction report."
+
+policy:
+  allow_implicit_invocation: true

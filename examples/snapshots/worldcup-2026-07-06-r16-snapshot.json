@@ -1,0 +1,206 @@
+{
+  "metadata": {
+    "name": "2026-07-06 世界杯 16 强两场预测临时快照",
+    "modelVersion": "xiaowo-live-test-input-v0.1.0",
+    "dataVersion": "xiaowo-27a644679842588c",
+    "sourceVersions": {
+      "match-schedule": "fifa-cbs-r16-2026-07-04-v1",
+      "fifa-ranking": "sofascore-fifa-ranking-2026-07-04-1200-v1",
+      "round-of-32-results": "sbnation-people-r32-tracker-2026-07-04-v1",
+      "team-news-review": "manual-review-2026-07-04-v1"
+    },
+    "strengthSnapshotVersion": "xiaowo-r16-strength-2026-07-04-v1",
+    "expectedTeamCount": 4,
+    "generatedAt": "2026-07-04T22:45:00+08:00",
+    "sampleScope": "临时测试快照：用于审计第一版 skill 与演示预测流程；非官方最终数据源。",
+    "snapshotContentHash": "b656963bb7de6feb"
+  },
+  "teams": [
+    {
+      "id": "POR",
+      "code": "POR",
+      "name": "葡萄牙",
+      "englishName": "Portugal",
+      "countryCode": "POR",
+      "fifaRank": 5,
+      "ratingValue": 1767.85,
+      "formScore": 66,
+      "attackStrength": 1.08,
+      "defenseStrength": 0.99,
+      "ratingSource": "Sofascore FIFA ranking points, updated 2026-07-04 12:00; manual strength blend from R32 review",
+      "strengthVersion": "xiaowo-r16-strength-2026-07-04-v1"
+    },
+    {
+      "id": "ESP",
+      "code": "ESP",
+      "name": "西班牙",
+      "englishName": "Spain",
+      "countryCode": "ESP",
+      "fifaRank": 2,
+      "ratingValue": 1874.71,
+      "formScore": 79,
+      "attackStrength": 1.18,
+      "defenseStrength": 0.86,
+      "ratingSource": "Sofascore FIFA ranking points, updated 2026-07-04 12:00; manual strength blend from R32 review",
+      "strengthVersion": "xiaowo-r16-strength-2026-07-04-v1"
+    },
+    {
+      "id": "USA",
+      "code": "USA",
+      "name": "美国",
+      "englishName": "United States",
+      "countryCode": "USA",
+      "fifaRank": 17,
+      "ratingValue": 1671.23,
+      "formScore": 72,
+      "attackStrength": 1.05,
+      "defenseStrength": 0.96,
+      "ratingSource": "Sofascore FIFA ranking points, updated 2026-07-04 12:00; manual strength blend from R32 review",
+      "strengthVersion": "xiaowo-r16-strength-2026-07-04-v1"
+    },
+    {
+      "id": "BEL",
+      "code": "BEL",
+      "name": "比利时",
+      "englishName": "Belgium",
+      "countryCode": "BEL",
+      "fifaRank": 9,
+      "ratingValue": 1742.24,
+      "formScore": 65,
+      "attackStrength": 1.1,
+      "defenseStrength": 1.05,
+      "ratingSource": "Sofascore FIFA ranking points, updated 2026-07-04 12:00; manual strength blend from R32 review",
+      "strengthVersion": "xiaowo-r16-strength-2026-07-04-v1"
+    }
+  ],
+  "matchStates": [
+    {
+      "matchId": "POR-ESP-2026-07-06-M93",
+      "matchNumber": "93",
+      "stage": "round_of_16",
+      "homeTeamId": "POR",
+      "awayTeamId": "ESP",
+      "venueCountryCode": "USA",
+      "venueName": "Dallas Stadium",
+      "status": "scheduled"
+    },
+    {
+      "matchId": "USA-BEL-2026-07-06-M94",
+      "matchNumber": "94",
+      "stage": "round_of_16",
+      "homeTeamId": "USA",
+      "awayTeamId": "BEL",
+      "venueCountryCode": "USA",
+      "venueName": "Seattle Stadium",
+      "status": "scheduled"
+    }
+  ],
+  "contextAdjustments": [
+    {
+      "id": "esp-r32-control-clean-sheet-v1",
+      "scope": "match",
+      "matchId": "POR-ESP-2026-07-06-M93",
+      "teamId": "ESP",
+      "target": "away",
+      "title": "西班牙 32 强 3-0 与防守稳定性修正",
+      "derivation": "manual_review",
+      "humanReviewed": true,
+      "impact": {
+        "attackMultiplier": 1.03,
+        "defenseMultiplier": 0.95
+      }
+    },
+    {
+      "id": "por-r32-late-scare-v1",
+      "scope": "match",
+      "matchId": "POR-ESP-2026-07-06-M93",
+      "teamId": "POR",
+      "target": "home",
+      "title": "葡萄牙 32 强逆转但过程波动修正",
+      "derivation": "manual_review",
+      "humanReviewed": true,
+      "impact": {
+        "formScoreDelta": -1,
+        "attackMultiplier": 0.99
+      }
+    },
+    {
+      "id": "usa-home-field-seattle-v1",
+      "scope": "match",
+      "matchId": "USA-BEL-2026-07-06-M94",
+      "teamId": "USA",
+      "target": "home",
+      "title": "美国主办国西雅图主场氛围说明性修正",
+      "derivation": "manual_review",
+      "humanReviewed": true,
+      "impact": {
+        "formScoreDelta": 1
+      }
+    },
+    {
+      "id": "usa-balogun-suspension-v1",
+      "scope": "match",
+      "matchId": "USA-BEL-2026-07-06-M94",
+      "teamId": "USA",
+      "target": "home",
+      "title": "巴洛贡红牌停赛降低美国锋线输出",
+      "derivation": "manual_review",
+      "humanReviewed": true,
+      "impact": {
+        "attackMultiplier": 0.92
+      }
+    },
+    {
+      "id": "bel-r32-comeback-open-defense-v1",
+      "scope": "match",
+      "matchId": "USA-BEL-2026-07-06-M94",
+      "teamId": "BEL",
+      "target": "away",
+      "title": "比利时 3-2 逆转显示进攻韧性但防守开放",
+      "derivation": "manual_review",
+      "humanReviewed": true,
+      "impact": {
+        "attackMultiplier": 1.03,
+        "defenseMultiplier": 1.04
+      }
+    },
+    {
+      "id": "r16-knockout-caution-v1",
+      "scope": "match",
+      "target": "both",
+      "title": "淘汰赛 90 分钟谨慎节奏",
+      "derivation": "deterministic_rule",
+      "ruleVersion": "knockout-90min-caution-v1",
+      "impact": {
+        "attackMultiplier": 0.98
+      }
+    }
+  ],
+  "officialFacts": [
+    {
+      "id": "schedule-2026-07-06",
+      "type": "schedule",
+      "summary": "2026-07-06 16 强：葡萄牙 vs 西班牙在达拉斯，美国 vs 比利时在西雅图。"
+    },
+    {
+      "id": "esp-r32-result",
+      "type": "completed_result",
+      "summary": "西班牙 32 强 3-0 奥地利，进入 16 强对阵葡萄牙。"
+    },
+    {
+      "id": "por-r32-result",
+      "type": "completed_result",
+      "summary": "葡萄牙 32 强 2-1 克罗地亚，补时阶段制胜进入 16 强。"
+    },
+    {
+      "id": "usa-r32-result",
+      "type": "completed_result",
+      "summary": "美国 32 强 2-0 波黑，巴洛贡和蒂尔曼进球；巴洛贡红牌停赛。"
+    },
+    {
+      "id": "bel-r32-result",
+      "type": "completed_result",
+      "summary": "比利时 32 强 3-2 逆转塞内加尔，过程波动但进攻韧性明显。"
+    }
+  ]
+}

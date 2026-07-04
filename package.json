@@ -1,0 +1,28 @@
+{
+  "name": "worldcup-prediction-skill-xiaowo",
+  "version": "0.1.0",
+  "description": "小蜗版世界杯比分与胜平负预测 skill、CLI、审计和复盘 harness。",
+  "type": "module",
+  "license": "MIT",
+  "author": "小蜗搬砖",
+  "bin": {
+    "worldcup-xiaowo": "./bin/worldcup-xiaowo.mjs"
+  },
+  "scripts": {
+    "audit": "node ./skills/worldcup-prediction-skill-xiaowo/scripts/audit-input.mjs --data ./examples/snapshots/sample-worldcup-snapshot.json",
+    "predict:sample": "node ./skills/worldcup-prediction-skill-xiaowo/scripts/predict-match.mjs --data ./examples/snapshots/sample-worldcup-snapshot.json --match ARG-ALG-2026-06-17 --out ./reports/sample-arg-alg.prediction.json",
+    "predict:batch-sample": "node ./skills/worldcup-prediction-skill-xiaowo/scripts/predict-batch.mjs --data ./examples/snapshots/worldcup-2026-07-06-r16-snapshot.json --out-dir ./reports/2026-07-06-r16-batch",
+    "scenario:sample": "node ./skills/worldcup-prediction-skill-xiaowo/scripts/generate-scenarios.mjs --prediction ./reports/sample-arg-alg.prediction.json --min-goals 3 --out ./reports/sample-arg-alg.big-score.json",
+    "record:sample": "node ./skills/worldcup-prediction-skill-xiaowo/scripts/record-result.mjs --prediction ./reports/sample-arg-alg.prediction.json --actual-home 3 --actual-away 0 --out ./reports/sample-arg-alg.record.json",
+    "report:sample": "node ./skills/worldcup-prediction-skill-xiaowo/scripts/generate-report.mjs --data ./examples/snapshots/sample-worldcup-snapshot.json --prediction ./reports/sample-arg-alg.prediction.json --record ./reports/sample-arg-alg.record.json --out ./reports/sample-arg-alg.report.md",
+    "collect:sample": "node ./skills/worldcup-prediction-skill-xiaowo/scripts/collect-template.mjs --match ARG-ALG-2026-06-17 --home ARG --away ALG --kickoff-at 2026-06-17T20:00:00Z --out ./reports/sample-collection-template.json",
+    "audit-collection:sample": "node ./skills/worldcup-prediction-skill-xiaowo/scripts/audit-collection.mjs --collection ./examples/collections/sample-arg-alg.collection.json --out ./reports/sample-collection-audit.json",
+    "pipeline:sample": "node ./skills/worldcup-prediction-skill-xiaowo/scripts/run-pipeline.mjs --data ./examples/snapshots/sample-worldcup-snapshot.json --match ARG-ALG-2026-06-17 --out-dir ./reports/sample-pipeline",
+    "revise:sample": "node ./skills/worldcup-prediction-skill-xiaowo/scripts/propose-revision.mjs --records ./reports/sample-arg-alg.record.json --out ./reports/sample-revision-proposal.json",
+    "test:unit": "node --test tests/*.test.mjs",
+    "test": "npm run test:unit && npm run collect:sample && npm run audit-collection:sample && npm run audit && npm run predict:sample && npm run scenario:sample && npm run record:sample && npm run report:sample && npm run pipeline:sample && npm run revise:sample"
+  },
+  "engines": {
+    "node": ">=18"
+  }
+}

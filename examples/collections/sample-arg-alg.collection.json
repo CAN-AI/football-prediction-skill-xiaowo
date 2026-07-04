@@ -1,0 +1,51 @@
+{
+  "metadata": {
+    "collectionVersion": "xiaowo-collection-v2",
+    "generatedAt": "2026-07-04T12:00:00+08:00",
+    "matchId": "ARG-ALG-2026-06-17"
+  },
+  "match": {
+    "matchId": "ARG-ALG-2026-06-17",
+    "homeTeamId": "ARG",
+    "awayTeamId": "ALG",
+    "kickoffAt": "2026-06-17T20:00:00Z"
+  },
+  "sourcePolicy": {
+    "officialFirst": true,
+    "selfMediaAsLeadOnly": true,
+    "modelImpactRequiresHumanReview": true
+  },
+  "claims": [
+    {
+      "id": "claim-schedule-1",
+      "topic": "schedule",
+      "targetType": "match",
+      "targetId": "ARG-ALG-2026-06-17",
+      "summary": "赛程时间以示例官方来源为准。",
+      "sourceType": "official",
+      "sourceName": "Example Official Fixture Feed",
+      "sourceUrl": "https://example.com/official-fixture",
+      "observedAt": "2026-07-04T10:00:00+08:00",
+      "kickoffAt": "2026-06-17T20:00:00Z",
+      "confidence": "high",
+      "affectsModel": true,
+      "humanReviewed": true,
+      "verifications": []
+    },
+    {
+      "id": "claim-self-media-1",
+      "topic": "tactical",
+      "targetType": "team",
+      "targetId": "ALG",
+      "summary": "有自媒体讨论阿尔及利亚可能采用低位防守，但尚未被权威来源确认。",
+      "sourceType": "self_media",
+      "sourceName": "Example Football Creator",
+      "sourceUrl": "https://example.com/creator-note",
+      "observedAt": "2026-07-04T10:30:00+08:00",
+      "confidence": "low",
+      "affectsModel": false,
+      "humanReviewed": false,
+      "verifications": []
+    }
+  ]
+}

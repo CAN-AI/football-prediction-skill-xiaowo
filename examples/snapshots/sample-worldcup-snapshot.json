@@ -1,0 +1,171 @@
+{
+  "metadata": {
+    "name": "小蜗版世界杯预测示例快照",
+    "modelVersion": "xiaowo-sample-input-v0.1.0",
+    "dataVersion": "xiaowo-0b5af04e4deb9753",
+    "sourceVersions": {
+      "match-schedule": "sample-schedule-2026-06-17-v1",
+      "team-rating-lines": "sample-rating-lines-2026-06-17-v1",
+      "recent-form-review": "sample-form-review-2026-06-17-v1",
+      "team-news-review": "sample-team-news-reviewed-v1"
+    },
+    "strengthSnapshotVersion": "xiaowo-sample-strength-2026-06-17-v1",
+    "expectedTeamCount": 4,
+    "generatedAt": "2026-06-16T18:00:00+08:00",
+    "sampleScope": "示例快照只用于演示 harness 流程；真实使用时应替换为自行审计过的数据来源。",
+    "snapshotContentHash": "2eb0da27187cc456"
+  },
+  "teams": [
+    {
+      "id": "ARG",
+      "code": "ARG",
+      "name": "阿根廷",
+      "englishName": "Argentina",
+      "countryCode": "ARG",
+      "groupCode": "sample",
+      "fifaRank": 1,
+      "eloRating": 1950,
+      "ratingValue": 1950,
+      "formScore": 72,
+      "attackStrength": 1.16,
+      "defenseStrength": 0.91,
+      "ratingSource": "sample_composite_rating",
+      "strengthVersion": "xiaowo-sample-strength-2026-06-17-v1"
+    },
+    {
+      "id": "ALG",
+      "code": "ALG",
+      "name": "阿尔及利亚",
+      "englishName": "Algeria",
+      "countryCode": "ALG",
+      "groupCode": "sample",
+      "fifaRank": 36,
+      "eloRating": 1760,
+      "ratingValue": 1760,
+      "formScore": 58,
+      "attackStrength": 1.01,
+      "defenseStrength": 1.03,
+      "ratingSource": "sample_composite_rating",
+      "strengthVersion": "xiaowo-sample-strength-2026-06-17-v1"
+    },
+    {
+      "id": "AUT",
+      "code": "AUT",
+      "name": "奥地利",
+      "englishName": "Austria",
+      "countryCode": "AUT",
+      "groupCode": "sample",
+      "fifaRank": 18,
+      "eloRating": 1885,
+      "ratingValue": 1885,
+      "formScore": 66,
+      "attackStrength": 1.11,
+      "defenseStrength": 0.93,
+      "ratingSource": "sample_composite_rating",
+      "strengthVersion": "xiaowo-sample-strength-2026-06-17-v1"
+    },
+    {
+      "id": "JOR",
+      "code": "JOR",
+      "name": "约旦",
+      "englishName": "Jordan",
+      "countryCode": "JOR",
+      "groupCode": "sample",
+      "fifaRank": 62,
+      "eloRating": 1640,
+      "ratingValue": 1640,
+      "formScore": 52,
+      "attackStrength": 0.89,
+      "defenseStrength": 1.08,
+      "ratingSource": "sample_composite_rating",
+      "strengthVersion": "xiaowo-sample-strength-2026-06-17-v1"
+    }
+  ],
+  "matchStates": [
+    {
+      "matchId": "ARG-ALG-2026-06-17",
+      "matchNumber": "sample-1",
+      "stage": "group",
+      "homeTeamId": "ARG",
+      "awayTeamId": "ALG",
+      "venueCountryCode": "USA",
+      "status": "scheduled"
+    },
+    {
+      "matchId": "AUT-JOR-2026-06-17",
+      "matchNumber": "sample-2",
+      "stage": "group",
+      "homeTeamId": "AUT",
+      "awayTeamId": "JOR",
+      "venueCountryCode": "USA",
+      "status": "scheduled"
+    }
+  ],
+  "contextAdjustments": [
+    {
+      "id": "arg-attack-depth-sample-v1",
+      "scope": "match",
+      "matchId": "ARG-ALG-2026-06-17",
+      "teamId": "ARG",
+      "target": "home",
+      "title": "阿根廷前场稳定性样例修正",
+      "derivation": "manual_review",
+      "humanReviewed": true,
+      "impact": {
+        "attackMultiplier": 1.02
+      }
+    },
+    {
+      "id": "alg-low-block-sample-v1",
+      "scope": "match",
+      "matchId": "ARG-ALG-2026-06-17",
+      "teamId": "ALG",
+      "target": "away",
+      "title": "阿尔及利亚低位防守样例修正",
+      "derivation": "manual_review",
+      "humanReviewed": true,
+      "impact": {
+        "attackMultiplier": 0.98,
+        "defenseMultiplier": 0.98
+      }
+    },
+    {
+      "id": "aut-pressing-sample-v1",
+      "scope": "match",
+      "matchId": "AUT-JOR-2026-06-17",
+      "teamId": "AUT",
+      "target": "home",
+      "title": "奥地利压迫强度样例修正",
+      "derivation": "manual_review",
+      "humanReviewed": true,
+      "impact": {
+        "formScoreDelta": 1,
+        "attackMultiplier": 1.03
+      }
+    },
+    {
+      "id": "sample-group-stage-control-v1",
+      "scope": "match",
+      "matchId": "AUT-JOR-2026-06-17",
+      "target": "both",
+      "title": "小组赛首轮节奏谨慎样例规则",
+      "derivation": "deterministic_rule",
+      "ruleVersion": "group-stage-caution-v1",
+      "impact": {
+        "attackMultiplier": 0.97
+      }
+    }
+  ],
+  "officialFacts": [
+    {
+      "id": "sample-arg-alg-context",
+      "type": "team_context",
+      "summary": "示例：阿根廷在基础强度、阵容深度和稳定性上高于阿尔及利亚。"
+    },
+    {
+      "id": "sample-aut-jor-context",
+      "type": "team_context",
+      "summary": "示例：奥地利在整体压迫和阵地进攻上优于约旦，但仍保留低比分概率。"
+    }
+  ]
+}

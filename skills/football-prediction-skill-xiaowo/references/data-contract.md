@@ -17,7 +17,7 @@
 
 ## 产物台账
 
-`createRunManifest` 返回冻结的根清单和冻结的 `artifacts` 映射。新建运行清单时，下列字段均为 `null`：
+`createRunManifest` 返回冻结的根清单和冻结的 `artifacts` 映射。对 JSON 兼容的输入数据，清单会深克隆并递归冻结 `match`、`competitionProfile`（包括 `regulation`、`baseline`）和产物内容，不保留调用方的可变引用。`appendArtifact` 与 `finalizeRunManifest` 也返回同样独立的深冻结清单。新建运行清单时，下列字段均为 `null`：
 
 - `evidenceLedger`
 - `audit`

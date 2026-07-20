@@ -14,11 +14,22 @@ const EMPTY_ARTIFACTS = Object.freeze({
 
 const ARTIFACT_NAMES = Object.freeze(Object.keys(EMPTY_ARTIFACTS));
 
+function cloneAndFreeze(value) {
+  if (value === null || typeof value !== "object") return value;
+  if (Array.isArray(value)) return Object.freeze(value.map(cloneAndFreeze));
+
+  const clone = {};
+  for (const [key, item] of Object.entries(value)) {
+    clone[key] = cloneAndFreeze(item);
+  }
+  return Object.freeze(clone);
+}
+
 function createFrozenArtifacts(artifacts = EMPTY_ARTIFACTS) {
   const target = {};
   for (const name of ARTIFACT_NAMES) {
     const artifact = artifacts[name];
-    target[name] = artifact === null ? null : Object.freeze({ ...artifact });
+    target[name] = artifact === null ? null : cloneAndFreeze(artifact);
   }
   Object.freeze(target);
 
@@ -30,10 +41,12 @@ function createFrozenArtifacts(artifacts = EMPTY_ARTIFACTS) {
 }
 
 function freezeManifest(manifest) {
-  const target = Object.freeze({
-    ...manifest,
-    artifacts: createFrozenArtifacts(manifest.artifacts)
-  });
+  const target = {};
+  for (const [key, value] of Object.entries(manifest)) {
+    target[key] = key === "artifacts" ? createFrozenArtifacts(value) : cloneAndFreeze(value);
+  }
+  Object.freeze(target);
+
   return new Proxy(target, {
     set() {
       throw new Error("运行清单不可直接修改，请创建新的运行清单。");

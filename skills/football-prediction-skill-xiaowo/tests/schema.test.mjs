@@ -150,3 +150,55 @@ test("定稿后的清单拒绝继续追加产物", () => {
     /已经定稿/
   );
 });
+
+test("创建清单深克隆并冻结比赛和赛事画像", () => {
+  const sourceProfile = {
+    ...profile,
+    baseline: { expectedGoals: 2.4 },
+    regulation: { ...profile.regulation }
+  };
+  const sourceMatch = { ...match };
+  const manifest = createRunManifest({
+    mode: "prematch",
+    dataCutoffAt: "2026-08-01T10:00:00Z",
+    competitionProfile: sourceProfile,
+    match: sourceMatch
+  });
+
+  sourceMatch.homeTeamId = "LIV";
+  sourceProfile.regulation.twoLegged = true;
+  sourceProfile.baseline.expectedGoals = 9.9;
+
+  assert.equal(manifest.match.homeTeamId, "ARS");
+  assert.equal(manifest.competitionProfile.regulation.twoLegged, false);
+  assert.equal(manifest.competitionProfile.baseline.expectedGoals, 2.4);
+  assert.throws(() => { manifest.match.homeTeamId = "LIV"; });
+  assert.throws(() => { manifest.competitionProfile.regulation.twoLegged = true; });
+});
+
+test("追加和定稿深克隆清单及产物内容", () => {
+  const manifest = createRunManifest({
+    mode: "prematch",
+    dataCutoffAt: "2026-08-01T10:00:00Z",
+    competitionProfile: { ...profile, regulation: { ...profile.regulation } },
+    match: { ...match }
+  });
+  const artifact = {
+    path: "prediction.json",
+    sha256: "a".repeat(64),
+    metadata: { producer: "test" }
+  };
+  const appended = appendArtifact(manifest, "prediction", artifact);
+  const finalized = finalizeRunManifest(appended);
+
+  artifact.path = "changed.json";
+  artifact.metadata.producer = "changed";
+
+  assert.equal(appended.artifacts.prediction.path, "prediction.json");
+  assert.equal(appended.artifacts.prediction.metadata.producer, "test");
+  assert.notEqual(appended.match, manifest.match);
+  assert.notEqual(appended.competitionProfile, manifest.competitionProfile);
+  assert.notEqual(finalized.match, appended.match);
+  assert.throws(() => { appended.artifacts.prediction.path = "changed.json"; });
+  assert.equal(appended.artifacts.prediction.path, "prediction.json");
+});

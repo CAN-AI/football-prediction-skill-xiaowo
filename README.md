@@ -67,6 +67,18 @@ v3 新增独立的 `football-prediction-skill-xiaowo`，覆盖联赛、国内杯
 npm run test:v3
 ```
 
+运行 v3 赛前正式流水线：
+
+```bash
+npm run pipeline:v3:sample
+# 或
+node ./skills/football-prediction-skill-xiaowo/scripts/run-pipeline.mjs \
+  --input ./skills/football-prediction-skill-xiaowo/assets/sample-data/club-league-snapshot.json \
+  --out-dir ./.tmp-v3-pipeline
+```
+
+流水线按“输入加载 → 赛事画像与清单校验 → 证据审计 → 审计快照 → 90 分钟预测 → 同源 Markdown/HTML 报告 → PNG 长图与渲染审计 → SHA-256 → 最终清单”的固定顺序运行。每次运行写入 `<out-dir>/<runId>/`；同名运行目录已存在时会直接失败，不覆写旧预测。正式完成要求 `audited-snapshot.json`、`prediction.json`、`report.md`、`report-long.html`、`report-long.png` 和 `render-audit.json` 全部存在、带 SHA-256，且渲染审计无错误，最终索引写入 `run-manifest.json`。
+
 ## 概率是根据什么来的
 
 通俗说：模型先估算两队预期进球，再把 0-0 到 7-7 的所有比分列成矩阵。所有主胜比分加起来就是主胜概率，所有平局比分加起来就是平局概率，所有客胜比分加起来就是客胜概率。也就是说，胜率不是一句“AI 觉得”，而是从每个比分格子的概率汇总出来的。

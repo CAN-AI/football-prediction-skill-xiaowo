@@ -22,6 +22,7 @@
     "revise:sample": "node ./skills/worldcup-prediction-skill-xiaowo/scripts/propose-revision.mjs --records ./reports/sample-arg-alg.record.json --out ./reports/sample-revision-proposal.json",
     "test:unit": "node --test tests/*.test.mjs",
     "test:v3": "node --test skills/football-prediction-skill-xiaowo/tests/*.test.mjs",
+    "pipeline:v3:sample": "node ./skills/football-prediction-skill-xiaowo/scripts/run-pipeline.mjs --input ./skills/football-prediction-skill-xiaowo/assets/sample-data/club-league-snapshot.json --out-dir ./.tmp-v3-pipeline",
     "test": "npm run test:unit && npm run collect:sample && npm run audit-collection:sample && npm run audit && npm run predict:sample && npm run scenario:sample && npm run record:sample && npm run report:sample && npm run pipeline:sample && npm run revise:sample"
   },
   "dependencies": {

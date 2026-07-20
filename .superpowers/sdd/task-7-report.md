@@ -92,3 +92,46 @@ node --check scripts/record-result.mjs              PASS
 node --check scripts/propose-calibration.mjs        PASS
 git diff --check                                    PASS
 ```
+
+## P1 独立审查修复
+
+审查基线：`ae26747 feat: add immutable postmatch calibration governance`
+
+### 原始预测文件绑定
+
+- `recordPostmatch` 不再从 prediction 或 manifest 回退推断绑定；`facts.predictionRunId` 与 `facts.predictionSha256` 都必须显式存在并与 manifest 完全一致。
+- `record-result.mjs` 只读取一次 prediction 原始字节，先计算 SHA-256，并分别与 `manifest.artifacts.prediction.sha256`、`facts.predictionSha256` 比较；两项一致后才解析该字节缓冲区。
+- RED：删除任一显式 facts 绑定时出现 `Missing expected exception`；篡改 prediction 概率但沿用旧哈希时，旧 CLI 成功退出并写出记录。
+- GREEN：缺失绑定由核心拒绝；篡改文件由 CLI 在 JSON 解析和记录写入前以 SHA-256 不匹配拒绝，输出文件不存在。
+
+### 清单定稿门禁
+
+- `manifest.finalizedAt` 必须是非空且可解析的完整 ISO 时间；它是 `publishedBeforeKickoff` 的唯一时间来源。
+- `finalizedAt` 为 `null`、空字符串或非法时间时直接拒绝，不再回退到 `createdAt` 或 `dataCutoffAt`。
+- RED：`finalizedAt: null` 的草稿清单未抛出异常并被标记为赛前发布。
+- GREEN：三种未定稿或非法时间均由核心拒绝。
+
+### 90 分钟可比较口径
+
+- 删除 `decidedIn = "90min"` 默认值；输出保留显式值，缺失时记录为 `null`。
+- 只有 prediction 自身显式声明 `resultScope: "90min"`，并且 accepted result fact 显式声明 `decidedIn: "90min"` 时，记录才可能为 `comparable: true`。
+- 缺失、`extra_time`、`penalties` 或 prediction 口径缺失时仍可记录来源绑定事实，但固定为不可比较，不进入校准指标和 30 场门槛。
+- RED：缺失 decidedIn 和缺失 prediction resultScope 都被旧实现错误标记为可比较。
+- GREEN：缺失、加时、点球及预测口径缺失四类记录全部为 `comparable: false`。
+
+### 修复后验证
+
+```text
+node --test skills/football-prediction-skill-xiaowo/tests/postmatch.test.mjs
+tests 17, pass 17, fail 0
+
+npm run test:v3
+tests 79, pass 79, fail 0
+
+npm test
+unit tests 12, pass 12, fail 0；全部旧版样例链路退出码 0
+
+node --check core/postmatch.mjs                     PASS
+node --check scripts/record-result.mjs              PASS
+git diff --check                                    PASS
+```

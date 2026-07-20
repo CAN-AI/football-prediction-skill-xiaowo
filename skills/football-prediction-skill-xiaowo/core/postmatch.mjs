@@ -16,6 +16,14 @@ function timestamp(value, label) {
   return milliseconds;
 }
 
+function isoTimestamp(value, label) {
+  if (typeof value !== "string"
+    || !/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d+)?(?:Z|[+-]\d{2}:\d{2})$/.test(value)) {
+    throw new Error(`${label} 必须是非空 ISO 时间。`);
+  }
+  return timestamp(value, label);
+}
+
 function predictionProbabilities(prediction) {
   const source = prediction?.probabilities ?? prediction ?? {};
   const probabilities = {
@@ -31,10 +39,6 @@ function predictionProbabilities(prediction) {
   const total = OUTCOMES.reduce((sum, outcome) => sum + probabilities[outcome], 0);
   if (Math.abs(total - 1) > 1e-9) throw new Error("prediction 的结果概率之和必须为 1。");
   return probabilities;
-}
-
-function bindingValue(candidates) {
-  return candidates.find((value) => value !== undefined && value !== null);
 }
 
 function validProbabilities(probabilities) {
@@ -54,25 +58,24 @@ export function recordPostmatch({ manifest, prediction, facts } = {}) {
   if (typeof predictionSha256 !== "string" || !/^[a-f0-9]{64}$/i.test(predictionSha256)) {
     throw new Error("manifest 的 prediction SHA-256 无效。");
   }
+  const finalizedAt = isoTimestamp(manifest?.finalizedAt, "manifest.finalizedAt");
 
-  const boundRunId = bindingValue([facts?.predictionRunId, prediction?.predictionRunId, predictionRunId]);
-  if (boundRunId !== predictionRunId) {
+  if (typeof facts?.predictionRunId !== "string" || !facts.predictionRunId) {
+    throw new Error("facts.predictionRunId 不能为空。");
+  }
+  if (facts.predictionRunId !== predictionRunId) {
     throw new Error("predictionRunId 与 manifest.runId 不匹配。");
   }
-  const boundSha256 = bindingValue([
-    facts?.predictionSha256,
-    facts?.predictionHash,
-    prediction?.predictionSha256,
-    prediction?.predictionHash,
-    predictionSha256
-  ]);
-  if (boundSha256 !== predictionSha256) {
+  if (typeof facts?.predictionSha256 !== "string" || !/^[a-f0-9]{64}$/i.test(facts.predictionSha256)) {
+    throw new Error("facts.predictionSha256 必须是 64 位 SHA-256。");
+  }
+  if (facts.predictionSha256 !== predictionSha256) {
     throw new Error("预测 SHA-256 与 manifest 不匹配。");
   }
 
   const result = facts?.actualResult ?? facts?.result ?? facts;
   if (!result || typeof result !== "object") throw new Error("facts 必须包含实际赛果。");
-  const { homeGoals, awayGoals, decidedIn = "90min", observedAt } = result;
+  const { homeGoals, awayGoals, decidedIn, observedAt } = result;
   if (![homeGoals, awayGoals].every((goals) => Number.isInteger(goals) && goals >= 0)) {
     throw new Error("实际赛果必须包含非负整数比分。");
   }
@@ -98,9 +101,7 @@ export function recordPostmatch({ manifest, prediction, facts } = {}) {
   const family = manifest?.competitionProfile?.family;
   const competitionId = manifest?.competitionProfile?.competitionId;
   if (!family || !competitionId) throw new Error("manifest 缺少赛事画像标识。");
-  const publicationAt = manifest.finalizedAt ?? manifest.createdAt ?? manifest.dataCutoffAt;
-  const publishedBeforeKickoff = timestamp(publicationAt, "manifest 发布时间")
-    < timestamp(kickoffAt, "manifest.match.kickoffAt");
+  const publishedBeforeKickoff = finalizedAt < timestamp(kickoffAt, "manifest.match.kickoffAt");
   const actualOutcome = homeGoals > awayGoals ? "home" : homeGoals === awayGoals ? "draw" : "away";
 
   return cloneAndFreeze({
@@ -110,14 +111,14 @@ export function recordPostmatch({ manifest, prediction, facts } = {}) {
     matchId: manifest.match?.matchId ?? null,
     publishedBeforeKickoff,
     comparable: facts?.comparable !== false
-      && (prediction?.resultScope ?? "90min") === "90min"
+      && prediction?.resultScope === "90min"
       && decidedIn === "90min",
     probabilities: predictionProbabilities(prediction),
     actualOutcome,
     actualResult: {
       homeGoals,
       awayGoals,
-      decidedIn,
+      decidedIn: decidedIn ?? null,
       observedAt,
       sourceClaimId
     }

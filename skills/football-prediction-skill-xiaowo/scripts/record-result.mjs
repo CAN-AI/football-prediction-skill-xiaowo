@@ -1,5 +1,6 @@
 #!/usr/bin/env node
 
+import { createHash } from "node:crypto";
 import { readFile, writeFile } from "node:fs/promises";
 import { recordPostmatch } from "../core/postmatch.mjs";
 
@@ -18,18 +19,24 @@ function parseArguments(argumentsList) {
   return FLAGS.every((flag) => values[flag]) ? values : null;
 }
 
-async function readJson(path) {
-  return JSON.parse(await readFile(path, "utf8"));
-}
-
 try {
   const options = parseArguments(process.argv.slice(2));
   if (!options) throw new Error(USAGE);
-  const [manifest, prediction, facts] = await Promise.all([
-    readJson(options["--manifest"]),
-    readJson(options["--prediction"]),
-    readJson(options["--facts"])
+  const [manifestText, predictionBytes, factsText] = await Promise.all([
+    readFile(options["--manifest"], "utf8"),
+    readFile(options["--prediction"]),
+    readFile(options["--facts"], "utf8")
   ]);
+  const manifest = JSON.parse(manifestText);
+  const facts = JSON.parse(factsText);
+  const predictionSha256 = createHash("sha256").update(predictionBytes).digest("hex");
+  if (predictionSha256 !== manifest?.artifacts?.prediction?.sha256) {
+    throw new Error("prediction 文件原始字节 SHA-256 与 manifest 不匹配。");
+  }
+  if (predictionSha256 !== facts?.predictionSha256) {
+    throw new Error("prediction 文件原始字节 SHA-256 与 facts.predictionSha256 不匹配。");
+  }
+  const prediction = JSON.parse(predictionBytes.toString("utf8"));
   const record = recordPostmatch({ manifest, prediction, facts });
   await writeFile(options["--out"], `${JSON.stringify(record, null, 2)}\n`, { encoding: "utf8", flag: "wx" });
   console.log(`赛后记录已写入：${options["--out"]}`);

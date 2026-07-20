@@ -1,6 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import { execFile } from "node:child_process";
+import { createHash } from "node:crypto";
 import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -140,6 +141,7 @@ test("赛后记录绑定已发布运行、预测哈希和有来源的赛果", ()
   assert.deepEqual(record.probabilities, { home: 0.5, draw: 0.3, away: 0.2 });
   assert.equal(record.actualResult.sourceClaimId, "result-claim-1");
   assert.equal(record.publishedBeforeKickoff, true);
+  assert.equal(record.comparable, true);
   assert.deepEqual(prematchPrediction, before);
 });
 
@@ -165,6 +167,32 @@ test("赛后记录拒绝不匹配的预测 SHA-256", () => {
   );
 });
 
+test("赛后记录要求 facts 显式提供运行 ID 和预测 SHA-256", () => {
+  for (const missingField of ["predictionRunId", "predictionSha256"]) {
+    const facts = confirmedFacts();
+    delete facts[missingField];
+    assert.throws(
+      () => recordPostmatch({
+        manifest: publishedManifest(),
+        prediction: prediction(),
+        facts
+      }),
+      new RegExp(`facts\\.${missingField}`)
+    );
+  }
+});
+
+test("赛后记录拒绝未定稿或 finalizedAt 非法的 manifest", () => {
+  for (const finalizedAt of [null, "", "not-an-iso-time"]) {
+    const manifest = publishedManifest();
+    manifest.finalizedAt = finalizedAt;
+    assert.throws(
+      () => recordPostmatch({ manifest, prediction: prediction(), facts: confirmedFacts() }),
+      /manifest\.finalizedAt/
+    );
+  }
+});
+
 test("赛后记录拒绝开球前观察到的赛果", () => {
   assert.throws(
     () => recordPostmatch({
@@ -179,6 +207,41 @@ test("赛后记录拒绝开球前观察到的赛果", () => {
     }),
     /observedAt.*kickoffAt/
   );
+});
+
+test("缺失、加时或点球口径的赛果不得进入 90 分钟校准", () => {
+  for (const decidedIn of [undefined, "extra_time", "penalties"]) {
+    const facts = confirmedFacts();
+    if (decidedIn === undefined) {
+      delete facts.actualResult.decidedIn;
+      delete facts.acceptedClaims[0].value.decidedIn;
+    } else {
+      facts.actualResult.decidedIn = decidedIn;
+      facts.acceptedClaims[0].value.decidedIn = decidedIn;
+    }
+
+    const record = recordPostmatch({
+      manifest: publishedManifest(),
+      prediction: prediction(),
+      facts
+    });
+
+    assert.equal(record.comparable, false);
+    assert.equal(record.actualResult.decidedIn, decidedIn ?? null);
+  }
+});
+
+test("预测自身缺少 90 分钟口径时赛后记录不可比较", () => {
+  const prematchPrediction = prediction();
+  delete prematchPrediction.resultScope;
+
+  const record = recordPostmatch({
+    manifest: publishedManifest(),
+    prediction: prematchPrediction,
+    facts: confirmedFacts()
+  });
+
+  assert.equal(record.comparable, false);
 });
 
 test("赛后记录拒绝没有来源标识的赛果", () => {
@@ -231,10 +294,14 @@ test("record-result CLI 写出绑定后的赛后记录且拒绝覆盖", async ()
   const factsPath = join(directory, "facts.json");
   const outputPath = join(directory, "record.json");
   const scriptPath = fileURLToPath(new URL("../scripts/record-result.mjs", import.meta.url));
+  const predictionBytes = `${JSON.stringify(prediction(), null, 2)}\n`;
+  const predictionSha256 = createHash("sha256").update(predictionBytes).digest("hex");
+  const manifest = publishedManifest();
+  manifest.artifacts.prediction.sha256 = predictionSha256;
   await Promise.all([
-    writeFile(manifestPath, JSON.stringify(publishedManifest()), "utf8"),
-    writeFile(predictionPath, JSON.stringify(prediction()), "utf8"),
-    writeFile(factsPath, JSON.stringify(confirmedFacts()), "utf8")
+    writeFile(manifestPath, JSON.stringify(manifest), "utf8"),
+    writeFile(predictionPath, predictionBytes, "utf8"),
+    writeFile(factsPath, JSON.stringify(confirmedFacts({ predictionSha256 })), "utf8")
   ]);
 
   try {
@@ -247,7 +314,7 @@ test("record-result CLI 写出绑定后的赛后记录且拒绝覆盖", async ()
     ]);
     const record = JSON.parse(await readFile(outputPath, "utf8"));
     assert.equal(record.predictionRunId, "prematch-run-1");
-    assert.equal(record.predictionSha256, PREDICTION_SHA256);
+    assert.equal(record.predictionSha256, predictionSha256);
     await assert.rejects(execFileAsync(process.execPath, [
       scriptPath,
       "--manifest", manifestPath,
@@ -255,6 +322,40 @@ test("record-result CLI 写出绑定后的赛后记录且拒绝覆盖", async ()
       "--facts", factsPath,
       "--out", outputPath
     ]));
+  } finally {
+    await rm(directory, { recursive: true, force: true });
+  }
+});
+
+test("record-result CLI 拒绝内容改写但沿用旧哈希的 prediction 文件", async () => {
+  const directory = await mkdtemp(join(tmpdir(), "football-postmatch-tampered-"));
+  const manifestPath = join(directory, "manifest.json");
+  const predictionPath = join(directory, "prediction.json");
+  const factsPath = join(directory, "facts.json");
+  const outputPath = join(directory, "record.json");
+  const scriptPath = fileURLToPath(new URL("../scripts/record-result.mjs", import.meta.url));
+  const originalBytes = `${JSON.stringify(prediction(), null, 2)}\n`;
+  const originalSha256 = createHash("sha256").update(originalBytes).digest("hex");
+  const manifest = publishedManifest();
+  manifest.artifacts.prediction.sha256 = originalSha256;
+  const tamperedPrediction = prediction();
+  tamperedPrediction.probabilities = { homeWinProb: 0.99, drawProb: 0.005, awayWinProb: 0.005 };
+
+  await Promise.all([
+    writeFile(manifestPath, JSON.stringify(manifest), "utf8"),
+    writeFile(predictionPath, JSON.stringify(tamperedPrediction), "utf8"),
+    writeFile(factsPath, JSON.stringify(confirmedFacts({ predictionSha256: originalSha256 })), "utf8")
+  ]);
+
+  try {
+    await assert.rejects(execFileAsync(process.execPath, [
+      scriptPath,
+      "--manifest", manifestPath,
+      "--prediction", predictionPath,
+      "--facts", factsPath,
+      "--out", outputPath
+    ]), /SHA-256/);
+    await assert.rejects(readFile(outputPath));
   } finally {
     await rm(directory, { recursive: true, force: true });
   }

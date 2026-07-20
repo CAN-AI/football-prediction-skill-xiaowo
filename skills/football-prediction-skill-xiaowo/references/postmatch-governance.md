@@ -6,13 +6,17 @@
 
 `recordPostmatch({ manifest, prediction, facts })` 接受已发布运行清单、该运行的预测对象和赛后事实。`facts` 必须包含：
 
-- `predictionRunId` 与 `predictionSha256`，分别严格等于 `manifest.runId` 和 `manifest.artifacts.prediction.sha256`；
+- 显式 `predictionRunId` 与 `predictionSha256`，分别严格等于 `manifest.runId` 和 `manifest.artifacts.prediction.sha256`；缺少任一字段都会拒绝，不回退到 manifest 自身；
 - `actualResult`，包含非负整数 `homeGoals`、`awayGoals`，`decidedIn`、不早于 `manifest.match.kickoffAt` 的 `observedAt`，以及 `sourceClaimId`；
 - `acceptedClaims` 数组，或 `evidenceAudit.accepted` 数组。
 
+`manifest.finalizedAt` 必须是非空且有效的 ISO 时间，并且是判断 `publishedBeforeKickoff` 的唯一发布时间。接口拒绝未定稿 manifest，不会回退到 `createdAt` 或 `dataCutoffAt`。
+
 程序会在 accepted claims 中严格查找 `sourceClaimId`。对应 claim 必须满足 `topic: "result"`，其 `matchId`、`match.matchId` 或 `subject` 必须匹配清单中的比赛身份，且 `claim.value` 与 `actualResult` 的规范化事实必须完全相同。若 claim 自带 `factFingerprint`，它也必须等于共享规范化函数重新计算的 SHA-256 指纹。仅提供一个裸 `sourceClaimId` 不构成来源确认。
 
-预测产物 SHA 是文件字节哈希。解析后的 JSON 对象不保留空白与结尾换行等字节信息，因此此接口验证的是清单中的可信 SHA 与显式赛后绑定一致，不声称从解析对象重新计算文件字节哈希。若需要复验文件本身，应在读取 JSON 前对原始 `prediction.json` 字节计算 SHA-256，并与清单比较。
+预测产物 SHA 是文件字节哈希。解析后的 JSON 对象不保留空白与结尾换行等字节信息，因此核心接口验证清单中的可信 SHA 与显式赛后绑定一致，不声称从解析对象重新计算文件字节哈希。`record-result.mjs` 会读取同一份原始 `prediction.json` 字节，在解析预测前计算 SHA-256，并同时与 manifest 和 facts 比较；任一不匹配都会拒绝。
+
+只有 `actualResult.decidedIn` 显式为 `90min`，且预测自身的 `resultScope` 为 `90min` 时，输出记录才可能标记为 `comparable: true`。缺失口径、`extra_time`、`penalties` 或其他口径不会被默认补成 90 分钟：事实仍可在严格来源绑定后记录，但 `comparable` 固定为 `false`，不会进入 90 分钟校准。
 
 命令行用法：
 

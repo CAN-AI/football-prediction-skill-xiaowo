@@ -79,6 +79,28 @@ node ./skills/football-prediction-skill-xiaowo/scripts/run-pipeline.mjs \
 
 流水线按“输入加载 → 赛事画像与清单校验 → 证据审计 → 审计快照 → 90 分钟预测 → 同源 Markdown/HTML 报告 → PNG 长图与渲染审计 → SHA-256 → 最终清单”的固定顺序运行。每次运行写入 `<out-dir>/<runId>/`；同名运行目录已存在时会直接失败，不覆写旧预测。正式完成要求 `audited-snapshot.json`、`prediction.json`、`report.md`、`report-long.html`、`report-long.png` 和 `render-audit.json` 全部存在、带 SHA-256，且渲染审计无错误，最终索引写入 `run-manifest.json`。
 
+### v3 工程流程图
+
+以下三张原创红白工程图分别限定生命周期、冲突降级和不可变血缘；它们由仓库内 Playwright 脚本确定性生成，不使用第三方品牌或报告版式。
+
+<p align="center">
+  <img src="skills/football-prediction-skill-xiaowo/assets/v3-lifecycle-flow.png" alt="v3 可审计预测生命周期" width="100%">
+</p>
+
+<p align="center">
+  <img src="skills/football-prediction-skill-xiaowo/assets/v3-conflict-degrade-flow.png" alt="v3 证据冲突与低置信降级" width="100%">
+</p>
+
+<p align="center">
+  <img src="skills/football-prediction-skill-xiaowo/assets/v3-lineage-flow.png" alt="v3 不可变运行血缘" width="100%">
+</p>
+
+跨 Agent 能力预检、无网络回退、缺失资料上传与赛事画像规则见 [v3 Skill 使用说明](./skills/football-prediction-skill-xiaowo/SKILL.md)。重绘流程图：
+
+```bash
+node ./skills/football-prediction-skill-xiaowo/scripts/render-flowcharts.mjs
+```
+
 ## 概率是根据什么来的
 
 通俗说：模型先估算两队预期进球，再把 0-0 到 7-7 的所有比分列成矩阵。所有主胜比分加起来就是主胜概率，所有平局比分加起来就是平局概率，所有客胜比分加起来就是客胜概率。也就是说，胜率不是一句“AI 觉得”，而是从每个比分格子的概率汇总出来的。

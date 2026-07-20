@@ -57,6 +57,16 @@ worldcup-xiaowo pipeline --data ./examples/snapshots/sample-worldcup-snapshot.js
 Copy-Item -Recurse .\skills\worldcup-prediction-skill-xiaowo "$env:USERPROFILE\.codex\skills\worldcup-prediction-skill-xiaowo"
 ```
 
+## v3 通用足球预测骨架
+
+v3 新增独立的 `football-prediction-skill-xiaowo`，覆盖联赛、国内杯赛、洲际俱乐部赛事、国家队赛事和友谊赛。它保留现有世界杯 v1 快速开始、`worldcup-xiaowo` 命令和原有语义；新的发布入口为 `football-xiaowo`，后续 v3 功能在该入口中演进。
+
+验证 v3 骨架：
+
+```bash
+npm run test:v3
+```
+
 ## 概率是根据什么来的
 
 通俗说：模型先估算两队预期进球，再把 0-0 到 7-7 的所有比分列成矩阵。所有主胜比分加起来就是主胜概率，所有平局比分加起来就是平局概率，所有客胜比分加起来就是客胜概率。也就是说，胜率不是一句“AI 觉得”，而是从每个比分格子的概率汇总出来的。

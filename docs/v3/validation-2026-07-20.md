@@ -3,7 +3,7 @@
 ## 结论
 
 - legacy 单元测试通过：12/12。
-- v3 测试通过：86/86。
+- v3 测试通过：90/90。
 - 俱乐部联赛样例完成端到端生成；Markdown、HTML、PNG、审计、预测、审计快照和运行清单均非空。
 - Chromium 渲染审计通过：无水平溢出、无表格溢出、无替换字符，PNG 非空。
 - MiniMax 本地认证状态有效，但独立文本调用因网络请求失败而退出；外部兼容性**未通过**，记录为外部网络限制。
@@ -24,8 +24,8 @@ npm run test:v3
 
 | 套件 | tests | pass | fail | duration |
 |---|---:|---:|---:|---:|
-| legacy `test:unit` | 12 | 12 | 0 | 481.7364 ms |
-| v3 `test:v3` | 86 | 86 | 0 | 8633.2286 ms |
+| legacy `test:unit` | 12 | 12 | 0 | 475.5312 ms |
+| v3 `test:v3` | 90 | 90 | 0 | 9068.5306 ms |
 
 Task 9 严格 TDD 证据：
 
@@ -36,25 +36,37 @@ Task 9 严格 TDD 证据：
 5. 第三个 RED：缺失渲染审计时实际返回 `true`，断言失败。
 6. 第三轮 GREEN：缺失审计、表格溢出和替换字符门禁加入后，定向测试 14/14。
 
+### P1 发布门禁修复（2026-07-21）
+
+独立审查复现了真实 manifest 形状下的缺口：`renderAudit.metadata.passed=false` 时，旧实现仍返回 `{ "ok": true, "errors": [] }`，而且 `validatePublishedRun` 没有生产调用点。
+
+修复继续采用三轮 RED/GREEN：
+
+1. artifact path/64hex RED：1 个失败、15 个通过；统一验证 `report.md`、`report-long.png`、`render-audit.json` 的真实 `{path,sha256}` 后，GREEN 16/16。
+2. nested metadata RED：3 个失败、14 个通过；要求 metadata 存在，并显式满足 `passed=true`、无水平/表格溢出、无替换字符、页面高度有效后，GREEN 17/17。
+3. 生产接线 RED：`finalizeManifest` 未拒绝不洁 metadata，且实际 pipeline 只写 `{passed,errors}`，共 2 个失败、16 个通过；接入统一 validator 并写入完整审计 metadata 后，GREEN 18/18。
+
+兼容边界：`validatePublishedRun(run)`、`finalizeManifest(manifest)` 和 `runPrematchPipeline(options)` 的签名与返回结构不变；实际 `renderAudit` artifact 的 metadata 在原 `{passed,errors}` 基础上增补四个审计字段。旧的不完整 metadata 现在不能发布，这是有意的安全收紧。
+
 ## 端到端流水线与渲染审计
 
 ```powershell
 node skills/football-prediction-skill-xiaowo/scripts/run-pipeline.mjs `
   --input skills/football-prediction-skill-xiaowo/assets/sample-data/club-league-snapshot.json `
-  --out-dir .tmp-v3-final
+  --out-dir .tmp-v3-p1
 ```
 
-退出码：`0`。运行 ID：`c31f62be-730d-43df-a8df-a1ffc559392e`。
+退出码：`0`。运行 ID：`3d2a6803-08d6-4478-a274-baa3987fd847`。对落盘 manifest 再调用 `validatePublishedRun`，结果为 `{ "ok": true, "errors": [] }`。
 
 | 产物 | 字节数 |
 |---|---:|
 | `audited-snapshot.json` | 1,669 |
 | `prediction.json` | 7,245 |
-| `render-audit.json` | 566 |
+| `render-audit.json` | 563 |
 | `report.md` | 2,077 |
 | `report-long.html` | 8,189 |
 | `report-long.png` | 185,975 |
-| `run-manifest.json` | 1,962 |
+| `run-manifest.json` | 2,108 |
 
 渲染审计的关键原始值：
 
@@ -70,6 +82,23 @@ node skills/football-prediction-skill-xiaowo/scripts/run-pipeline.mjs `
   "tableOverflow": [],
   "replacementCharacterDetected": false,
   "png": { "byteLength": 185975, "present": true }
+}
+```
+
+最终 manifest 中的真实渲染 artifact 记录为：
+
+```json
+{
+  "path": "render-audit.json",
+  "sha256": "48dd21ee68cd793b84539e26fb3776a3b932f98bda261b085693f044a8ba75ab",
+  "metadata": {
+    "passed": true,
+    "errors": [],
+    "horizontalOverflow": false,
+    "tableOverflow": [],
+    "replacementCharacterDetected": false,
+    "pageHeightValid": true
+  }
 }
 ```
 

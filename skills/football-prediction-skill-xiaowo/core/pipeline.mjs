@@ -15,6 +15,11 @@ const REQUIRED_ARTIFACTS = Object.freeze([
   ["inputSnapshot", "audited-snapshot.json"],
   ["prediction", "prediction.json"]
 ]);
+const PUBLISHED_ARTIFACTS = Object.freeze([
+  ["reportMarkdown", "report.md"],
+  ["reportPng", "report-long.png"],
+  ["renderAudit", "render-audit.json"]
+]);
 
 async function loadInput(input) {
   if (typeof input === "string" || input instanceof URL) {
@@ -70,21 +75,26 @@ function renderAuditErrors(audit) {
 
 export function validatePublishedRun(run) {
   const errors = [];
-  if (typeof run?.artifacts?.reportMarkdown?.sha256 !== "string"
-    || !run.artifacts.reportMarkdown.sha256.trim()) {
-    errors.push("缺少 Markdown 哈希");
+  for (const [artifactName, fileName] of PUBLISHED_ARTIFACTS) {
+    const artifact = run?.artifacts?.[artifactName];
+    if (!artifact
+      || typeof artifact.path !== "string"
+      || !artifact.path.trim()
+      || !/^[a-f0-9]{64}$/i.test(artifact.sha256 ?? "")) {
+      errors.push(`${fileName} 的 path 或 SHA-256 无效`);
+    }
   }
-  if (typeof run?.artifacts?.reportPng?.sha256 !== "string"
-    || !run.artifacts.reportPng.sha256.trim()) {
-    errors.push("缺少 PNG 哈希");
-  }
-  const renderAudit = run?.artifacts?.renderAudit;
-  if (!renderAudit || typeof renderAudit !== "object") {
-    errors.push("缺少渲染审计");
+  const metadata = run?.artifacts?.renderAudit?.metadata;
+  if (!metadata || typeof metadata !== "object") {
+    errors.push("render-audit.json 缺少 metadata");
   } else {
-    if (renderAudit.horizontalOverflow === true) errors.push("存在水平溢出");
-    if (renderAudit.tableOverflow === true || renderAudit.tableOverflow?.length) errors.push("存在表格溢出");
-    if (renderAudit.replacementCharacterDetected === true) errors.push("检测到替换字符");
+    if (metadata.passed !== true) errors.push("render-audit.json 未通过");
+    if (metadata.horizontalOverflow !== false) errors.push("存在水平溢出或审计标志缺失");
+    if (!Array.isArray(metadata.tableOverflow) || metadata.tableOverflow.length) {
+      errors.push("存在表格溢出或审计标志缺失");
+    }
+    if (metadata.replacementCharacterDetected !== false) errors.push("检测到替换字符或审计标志缺失");
+    if (metadata.pageHeightValid !== true) errors.push("页面高度审计未通过");
   }
   return { ok: errors.length === 0, errors };
 }
@@ -115,8 +125,9 @@ export function finalizeManifest(manifest) {
       throw new Error(`${fileName} 的 path 或 SHA-256 无效。`);
     }
   }
-  if (manifest.artifacts.renderAudit.metadata?.passed !== true) {
-    throw new Error("render-audit.json 未通过，正式运行不能定稿。");
+  const publication = validatePublishedRun(manifest);
+  if (!publication.ok) {
+    throw new Error(`正式运行发布校验失败：${publication.errors.join("；")}。`);
   }
   return finalizeRunManifest(manifest);
 }
@@ -211,7 +222,14 @@ export async function runPrematchPipeline({ input, outDir } = {}) {
     const metadata = artifactName === "inputSnapshot"
       ? { evidenceAudit: evidenceAuditSummary }
       : artifactName === "renderAudit"
-        ? { passed: true, errors: [] }
+        ? {
+            passed: true,
+            errors: [],
+            horizontalOverflow: renderAudit.horizontalOverflow,
+            tableOverflow: renderAudit.tableOverflow,
+            replacementCharacterDetected: renderAudit.replacementCharacterDetected,
+            pageHeightValid: renderAudit.pageHeightValid
+          }
         : undefined;
     manifest = appendArtifact(manifest, artifactName, {
       path: fileName,

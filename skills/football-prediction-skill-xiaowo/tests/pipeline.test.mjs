@@ -12,6 +12,14 @@ import { finalizeManifest, runPrematchPipeline, validatePublishedRun } from "../
 const execFileAsync = promisify(execFile);
 
 const SHA256 = "a".repeat(64);
+const CLEAN_RENDER_METADATA = Object.freeze({
+  passed: true,
+  errors: [],
+  horizontalOverflow: false,
+  tableOverflow: [],
+  replacementCharacterDetected: false,
+  pageHeightValid: true
+});
 
 function completeManifest(overrides = {}) {
   return {
@@ -21,50 +29,77 @@ function completeManifest(overrides = {}) {
       reportMarkdown: { path: "report.md", sha256: SHA256 },
       reportHtml: { path: "report-long.html", sha256: SHA256 },
       reportPng: { path: "report-long.png", sha256: SHA256 },
-      renderAudit: { path: "render-audit.json", sha256: SHA256, metadata: { passed: true } },
+      renderAudit: { path: "render-audit.json", sha256: SHA256, metadata: CLEAN_RENDER_METADATA },
       ...overrides
     }
   };
 }
 
+test("发布验证读取真实产物记录并拒绝缺失路径或非 SHA-256 哈希", () => {
+  const invalidManifests = [
+    completeManifest({ reportMarkdown: { path: "", sha256: SHA256 } }),
+    completeManifest({ reportPng: { path: "report-long.png", sha256: "b" } }),
+    completeManifest({
+      renderAudit: { path: "render-audit.json", sha256: "c", metadata: CLEAN_RENDER_METADATA }
+    })
+  ];
+
+  for (const manifest of invalidManifests) {
+    assert.equal(validatePublishedRun(manifest).ok, false);
+  }
+});
+
+test("发布验证接受路径、哈希和审计 metadata 完整的真实清单", () => {
+  assert.deepEqual(validatePublishedRun(completeManifest()), { ok: true, errors: [] });
+});
+
 test("发布运行必须同时拥有 Markdown、PNG 和干净的渲染审计", () => {
-  const run = {
-    artifacts: {
-      reportMarkdown: { sha256: "a" },
-      reportPng: { sha256: "b" },
-      renderAudit: { horizontalOverflow: true }
+  const run = completeManifest({
+    renderAudit: {
+      path: "render-audit.json",
+      sha256: SHA256,
+      metadata: { ...CLEAN_RENDER_METADATA, horizontalOverflow: true }
     }
-  };
+  });
 
   assert.equal(validatePublishedRun(run).ok, false);
 });
 
-test("发布验证拒绝缺失 Markdown 或 PNG 哈希", () => {
-  const cleanAudit = { horizontalOverflow: false, replacementCharacterDetected: false, tableOverflow: [] };
-  const invalidArtifacts = [
-    { reportMarkdown: {}, reportPng: { sha256: "b" }, renderAudit: cleanAudit },
-    { reportMarkdown: { sha256: "a" }, reportPng: {}, renderAudit: cleanAudit },
-    { reportMarkdown: { sha256: "a" }, renderAudit: cleanAudit }
+test("发布验证拒绝缺失 Markdown 或 PNG 记录", () => {
+  const invalidManifests = [
+    completeManifest({ reportMarkdown: null }),
+    completeManifest({ reportPng: null })
   ];
 
-  for (const artifacts of invalidArtifacts) {
-    assert.equal(validatePublishedRun({ artifacts }).ok, false);
+  for (const manifest of invalidManifests) {
+    assert.equal(validatePublishedRun(manifest).ok, false);
   }
 });
 
-test("发布验证拒绝缺失或带坏文本和溢出的渲染审计", () => {
-  const artifacts = {
-    reportMarkdown: { sha256: "a" },
-    reportPng: { sha256: "b" }
-  };
-  const invalidAudits = [
+test("发布验证拒绝缺失或未通过的 renderAudit metadata", () => {
+  const invalidMetadata = [
     undefined,
-    { horizontalOverflow: false, tableOverflow: [{}], replacementCharacterDetected: false },
-    { horizontalOverflow: false, tableOverflow: [], replacementCharacterDetected: true }
+    { ...CLEAN_RENDER_METADATA, passed: false }
   ];
 
-  for (const renderAudit of invalidAudits) {
-    assert.equal(validatePublishedRun({ artifacts: { ...artifacts, renderAudit } }).ok, false);
+  for (const metadata of invalidMetadata) {
+    const renderAudit = { path: "render-audit.json", sha256: SHA256, ...(metadata ? { metadata } : {}) };
+    assert.equal(validatePublishedRun(completeManifest({ renderAudit })).ok, false);
+  }
+});
+
+test("发布验证拒绝 metadata 中缺失或不洁的渲染标志", () => {
+  const invalidMetadata = [
+    { passed: true },
+    { ...CLEAN_RENDER_METADATA, horizontalOverflow: true },
+    { ...CLEAN_RENDER_METADATA, tableOverflow: [{}] },
+    { ...CLEAN_RENDER_METADATA, replacementCharacterDetected: true },
+    { ...CLEAN_RENDER_METADATA, pageHeightValid: false }
+  ];
+
+  for (const metadata of invalidMetadata) {
+    const renderAudit = { path: "render-audit.json", sha256: SHA256, metadata };
+    assert.equal(validatePublishedRun(completeManifest({ renderAudit })).ok, false);
   }
 });
 
@@ -110,6 +145,18 @@ test("正式运行拒绝带错误的渲染审计", () => {
   assert.throws(() => finalizeManifest(manifest), /render-audit\.json.*未通过/);
 });
 
+test("实际定稿路径调用发布验证并拒绝不洁 renderAudit metadata", () => {
+  const manifest = completeManifest({
+    renderAudit: {
+      path: "render-audit.json",
+      sha256: SHA256,
+      metadata: { ...CLEAN_RENDER_METADATA, horizontalOverflow: true }
+    }
+  });
+
+  assert.throws(() => finalizeManifest(manifest), /发布校验失败.*水平溢出/);
+});
+
 test("完整正式运行清单定稿后带有定稿时间", () => {
   const finalized = finalizeManifest(completeManifest());
 
@@ -130,7 +177,8 @@ test("赛前流水线按固定顺序生成可哈希的完整运行目录", async
       const contents = await readFile(join(result.runDirectory, artifact.path));
       assert.equal(createHash("sha256").update(contents).digest("hex"), artifact.sha256);
     }
-    assert.equal(manifest.artifacts.renderAudit.metadata.passed, true);
+    assert.deepEqual(manifest.artifacts.renderAudit.metadata, CLEAN_RENDER_METADATA);
+    assert.deepEqual(validatePublishedRun(manifest), { ok: true, errors: [] });
   } finally {
     await rm(outputRoot, { recursive: true, force: true });
   }

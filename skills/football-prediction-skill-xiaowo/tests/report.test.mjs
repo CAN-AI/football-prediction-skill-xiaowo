@@ -78,7 +78,7 @@ test("赛前 Markdown 与 HTML 共享固定章节顺序", () => {
   }
 });
 
-test("市场为空时不编造概率，存在审计市场时才显示", () => {
+test("市场只有通过完整审计门禁时才显示", () => {
   const base = {
     manifest: { match: { homeTeamId: "ARS", awayTeamId: "CHE" } },
     prediction: { homeWinProb: 0.45, drawProb: 0.28, awayWinProb: 0.27 },
@@ -87,11 +87,46 @@ test("市场为空时不编造概率，存在审计市场时才显示", () => {
   const withoutMarket = buildPrematchReport(base);
   const withMarket = buildPrematchReport({
     ...base,
-    market: { homeWinProb: 0.5, drawProb: 0.25, awayWinProb: 0.25, audited: true }
+    market: {
+      audited: true,
+      scope: "90min",
+      probabilityType: "de_vig",
+      observedAt: "2026-08-01T09:55:00Z",
+      source: "审计交易所快照",
+      homeWinProb: 0.5,
+      drawProb: 0.25,
+      awayWinProb: 0.25
+    }
   });
 
   assert.doesNotMatch(withoutMarket.markdown, /市场去水概率：/);
   assert.match(withMarket.markdown, /市场去水概率：主胜 50\.0% · 平局 25\.0% · 客胜 25\.0%/);
+});
+
+test("拒绝未审计、负数和不归一市场且不泄露概率", () => {
+  const base = {
+    manifest: { match: { homeTeamId: "ARS", awayTeamId: "CHE" } },
+    prediction: { homeWinProb: 0.45, drawProb: 0.28, awayWinProb: 0.27 },
+    evidenceAudit: { status: "passed", missing: [], conflicts: [], accepted: [] }
+  };
+  const validMetadata = {
+    scope: "90min",
+    probabilityType: "de_vig",
+    observedAt: "2026-08-01T09:55:00Z",
+    source: "审计交易所快照"
+  };
+  const rejectedMarkets = [
+    { ...validMetadata, audited: false, homeWinProb: 0.6, drawProb: 0.2, awayWinProb: 0.2 },
+    { ...validMetadata, audited: true, homeWinProb: -0.1, drawProb: 0.5, awayWinProb: 0.6 },
+    { ...validMetadata, audited: true, homeWinProb: 0.7, drawProb: 0.4, awayWinProb: 0.2 }
+  ];
+
+  for (const market of rejectedMarkets) {
+    const report = buildPrematchReport({ ...base, market });
+    assert.doesNotMatch(report.markdown, /市场去水概率：/);
+    assert.doesNotMatch(report.markdown, /60\.0%|70\.0%|-10\.0%/);
+    assert.match(report.markdown, /市场数据未通过审计门禁/);
+  }
 });
 
 test("报告只把已接受证据写入来源索引", () => {
@@ -112,19 +147,66 @@ test("报告只把已接受证据写入来源索引", () => {
   assert.doesNotMatch(report.html, /rejected-1/);
 });
 
-test("赛后报告使用独立复盘结构并对照实际赛果", () => {
+test("无已接受来源绑定的赛果保持未提供", () => {
   const report = buildPostmatchReport({
     manifest: { match: { homeTeamName: "阿森纳", awayTeamName: "切尔西" } },
     prediction: { homeWinProb: 0.45, drawProb: 0.28, awayWinProb: 0.27 },
     evidenceAudit: { status: "passed", missing: [], conflicts: [], accepted: [] },
-    actualResult: { homeGoals: 2, awayGoals: 1, decidedIn: "90min" }
+    postmatch: { actualResult: { homeGoals: 2, awayGoals: 1, decidedIn: "90min", sourceClaimId: "missing-result" } }
   });
 
-  assert.match(report.markdown, /赛后复盘报告/);
+  assert.match(report.markdown, /实际赛果：未提供/);
+  assert.doesNotMatch(report.markdown, /2–1/);
+});
+
+test("赛后报告显示来源绑定事实并按完整复盘顺序输出治理状态", () => {
+  const predictionHash = "a".repeat(64);
+  const report = buildPostmatchReport({
+    manifest: { match: { homeTeamName: "阿森纳", awayTeamName: "切尔西" } },
+    prediction: { modelVersion: "model-v3", homeWinProb: 0.45, drawProb: 0.28, awayWinProb: 0.27 },
+    evidenceAudit: {
+      status: "passed",
+      missing: [],
+      conflicts: [],
+      accepted: [
+        { claimId: "result-1", topic: "result", subject: "正式赛果", sourceUrl: "https://official.test/result" },
+        { claimId: "event-1", topic: "statistics", subject: "第18分钟进球", sourceUrl: "https://official.test/events" },
+        { claimId: "stats-1", topic: "statistics", subject: "全场射门", sourceUrl: "https://provider.test/stats" }
+      ]
+    },
+    postmatch: {
+      prematchBinding: { runId: "prematch-run-42", predictionHash },
+      actualResult: { homeGoals: 2, awayGoals: 1, decidedIn: "90min", observedAt: "2026-08-01T17:00:00Z", sourceClaimId: "result-1" },
+      eventTimeline: [{ minute: 18, event: "阿森纳进球", sourceClaimId: "event-1" }],
+      processStatistics: [{ metric: "射门", home: 14, away: 8, definition: "官方全场射门口径", sourceClaimId: "stats-1" }],
+      calibrationMetrics: { brierScore: 0.31, logLoss: 0.8, sampleSize: 1 },
+      noPosthocRewrite: { enforced: true, predictionHashUnchanged: true },
+      revisionProposal: { proposalId: "proposal-1", status: "pending_human_review", summary: "等待跨样本验证" },
+      humanApprovals: [{ itemId: "proposal-1", status: "pending", approver: null, decidedAt: null }]
+    }
+  });
+  const sectionNames = [
+    "赛前运行绑定", "赛果事实与事件时间线", "过程统计与来源口径", "预测命中审计", "校准指标",
+    "禁止事后回写", "修正提案", "人工批准项", "来源索引"
+  ];
+
   assert.match(report.markdown, /实际赛果：阿森纳 2–1 切尔西/);
-  assert.match(report.markdown, /预测与实赛对照/);
-  assert.match(report.markdown, /偏差归因与校准建议/);
-  assert.doesNotMatch(report.markdown, /## 执行结论/);
+  assert.match(report.markdown, /赛前运行 ID：prematch-run-42/);
+  assert.match(report.markdown, new RegExp(`预测产物哈希：${predictionHash}`));
+  assert.match(report.markdown, /阿森纳进球/);
+  assert.match(report.markdown, /官方全场射门口径/);
+  assert.match(report.markdown, /Brier 分数.*0\.31/s);
+  assert.match(report.markdown, /策略 \| 禁止事后回写/);
+  assert.match(report.markdown, /proposal-1/);
+  assert.match(report.markdown, /待人工批准/);
+  for (const [output, heading] of [[report.markdown, (name) => `## ${name}`], [report.html, (name) => `<h2>${name}</h2>`]]) {
+    let cursor = -1;
+    for (const name of sectionNames) {
+      const next = output.indexOf(heading(name));
+      assert.ok(next > cursor, `${name} 应按赛后固定顺序出现`);
+      cursor = next;
+    }
+  }
 });
 
 test("国家队赛事使用数据契约中的赛事类别名称", () => {
@@ -204,6 +286,26 @@ test("报告 CLI 从一个样例同源生成 Markdown、HTML、PNG 和审计", a
     assert.deepEqual(audit.tableOverflow, []);
     assert.equal(audit.replacementCharacterDetected, false);
     assert.equal(audit.pageHeightValid, true);
+  } finally {
+    await rm(outputDirectory, { recursive: true, force: true });
+  }
+});
+
+test("报告 CLI 自动识别结构化 postmatch 夹具", async () => {
+  const outputDirectory = await mkdtemp(join(tmpdir(), "football-postmatch-cli-"));
+  const fixturePath = join(outputDirectory, "postmatch-fixture.json");
+  const fixture = JSON.parse(await readFile(new URL("../assets/sample-data/club-league-snapshot.json", import.meta.url), "utf8"));
+  fixture.evidenceAudit.accepted = [{ claimId: "result-cli-1", topic: "result", subject: "正式赛果", sourceUrl: "https://official.test/result" }];
+  fixture.postmatch = {
+    prematchBinding: { runId: "prematch-cli-run", predictionHash: "b".repeat(64) },
+    actualResult: { homeGoals: 1, awayGoals: 0, decidedIn: "90min", sourceClaimId: "result-cli-1" }
+  };
+  await writeFile(fixturePath, JSON.stringify(fixture), "utf8");
+  try {
+    await execFileAsync(process.execPath, [fileURLToPath(new URL("../scripts/generate-report.mjs", import.meta.url)), "--fixture", fixturePath, "--out-dir", outputDirectory]);
+    const markdown = await readFile(join(outputDirectory, "report.md"), "utf8");
+    assert.match(markdown, /## 赛前运行绑定/);
+    assert.match(markdown, /实际赛果：ARS 1–0 CHE/);
   } finally {
     await rm(outputDirectory, { recursive: true, force: true });
   }

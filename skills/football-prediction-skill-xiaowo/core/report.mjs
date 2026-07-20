@@ -123,16 +123,36 @@ function scorelineRows(prediction = {}) {
     .map((item, index) => [String(index + 1), `${item.homeGoals}–${item.awayGoals}`, percent(item.probability)]);
 }
 
-function marketProbabilities(market) {
-  if (!market || typeof market !== "object") return null;
-  const source = market.deVigProbabilities ?? market.fairProbabilities ?? market.probabilities ?? market;
-  const values = { home: source.homeWinProb ?? source.home, draw: source.drawProb ?? source.draw, away: source.awayWinProb ?? source.away };
-  return Object.values(values).every(Number.isFinite) ? values : null;
+function hasSource(source) {
+  if (typeof source === "string") return source.trim().length > 0;
+  if (!source || typeof source !== "object") return false;
+  return [source.name, source.url, source.id].some((value) => typeof value === "string" && value.trim());
 }
 
-function marketBlocks(market, prediction) {
-  const values = marketProbabilities(market);
-  if (!values) return [paragraph("未提供经审计的市场概率，本报告不推算或填补市场数据。")];
+function auditMarket(market) {
+  if (!market || typeof market !== "object") return { values: null, issues: ["市场数据未提供"] };
+  const issues = [];
+  const scope = market.scope ?? market.resultScope;
+  const probabilityType = market.probabilityType ?? market.method;
+  const scopeText = typeof scope === "string" ? scope.toLowerCase() : "";
+  const typeText = typeof probabilityType === "string" ? probabilityType.toLowerCase() : "";
+  const is90Minutes = ["90min", "90_minutes", "regulation_90min"].includes(scopeText) || /90.*min/.test(scopeText);
+  const isDeVig = market.deVig === true || market.isDeVig === true || ["de_vig", "de-vig", "devig", "fair"].includes(typeText) || /de.?vig|去水/.test(scopeText);
+  if (market.audited !== true) issues.push("市场审计状态未通过");
+  if (!is90Minutes || !isDeVig) issues.push("市场口径不是90分钟去水概率");
+  if (typeof market.observedAt !== "string" || !market.observedAt.trim() || Number.isNaN(Date.parse(market.observedAt))) issues.push("市场观察时间缺失或无效");
+  if (!hasSource(market.source) && !hasSource(market.sourceUrl)) issues.push("市场来源缺失");
+  const source = market.deVigProbabilities ?? market.fairProbabilities ?? market.probabilities ?? market;
+  const values = { home: source.homeWinProb ?? source.home, draw: source.drawProb ?? source.draw, away: source.awayWinProb ?? source.away };
+  const probabilities = Object.values(values);
+  if (!probabilities.every((value) => Number.isFinite(value) && value >= 0 && value <= 1)) issues.push("市场概率超出合法范围");
+  else if (Math.abs(probabilities.reduce((total, value) => total + value, 0) - 1) > 0.001) issues.push("市场概率未归一");
+  return { values: issues.length ? null : values, issues };
+}
+
+function marketBlocks(marketAudit, prediction) {
+  const { values } = marketAudit;
+  if (!values) return [paragraph("市场数据未通过审计门禁，本报告不显示、推算或填补市场概率。")];
   const delta = (model, external) => Number.isFinite(model) ? `${((model - external) * 100).toFixed(1)} 个百分点` : "未提供";
   return [
     paragraph(`市场去水概率：主胜 ${percent(values.home)} · 平局 ${percent(values.draw)} · 客胜 ${percent(values.away)}`),
@@ -144,8 +164,10 @@ function marketBlocks(market, prediction) {
   ];
 }
 
-function auditBlocks(audit = {}) {
-  const missing = Array.isArray(audit.missing) && audit.missing.length ? audit.missing.join("、") : "无";
+function auditBlocks(audit = {}, additionalMissing = []) {
+  const originalMissing = Array.isArray(audit.missing) ? audit.missing : [];
+  const combinedMissing = [...originalMissing, ...additionalMissing];
+  const missing = combinedMissing.length ? combinedMissing.join("、") : "无";
   return [list([
     `审计状态：${auditLabel(audit.status)}`,
     `已接受证据：${acceptedClaims(audit).length} 条`,
@@ -170,6 +192,7 @@ function prematchDocument(data = {}) {
   const scores = scorelineRows(prediction);
   const regulation = profile.regulation ?? {};
   const knockoutApplies = profile.family && profile.family !== "league" && (regulation.extraTime || regulation.penalties || regulation.twoLegged);
+  const marketAudit = auditMarket(market);
   return {
     kicker: "可审计足球预测 · 赛前",
     title: `${teams.home} vs ${teams.away}｜赛前预测报告`,
@@ -177,7 +200,7 @@ function prematchDocument(data = {}) {
     sections: [
       section("赛制与口径", "blue", [list([...regulationSummary(profile), "所有胜平负概率均限定常规时间90分钟（含补时）。"])]),
       section("执行结论", "green", [paragraph(leadingOutcome(prediction, teams)), paragraph(`数据置信度：${confidenceLabel(prediction.confidence)}。`)]),
-      section("证据审计", evidenceAudit.status === "passed" ? "blue" : "red", auditBlocks(evidenceAudit)),
+      section("证据审计", evidenceAudit.status === "passed" && marketAudit.values ? "blue" : "red", auditBlocks(evidenceAudit, marketAudit.issues)),
       section("实力与状态", "blue", claimBlocks(evidenceAudit, ["statistics", "xg"], "没有进入审计账本的实力或近期状态证据；不做补写。")),
       section("人员可用性", "red", claimBlocks(evidenceAudit, ["lineup", "injury"], "未获得可作为事实展示的已接受首发或伤停证据。")),
       section("战术对位", "blue", claimBlocks(evidenceAudit, ["tactics"], "没有经审计的战术对位事实；不根据阵型名称自行推断。")),
@@ -190,7 +213,7 @@ function prematchDocument(data = {}) {
       ])]),
       section("90分钟胜平负概率", "blue", [table(["主胜", "平局", "客胜"], [[percent(prediction.homeWinProb), percent(prediction.drawProb), percent(prediction.awayWinProb)]])]),
       section("比分候选", "blue", scores.length ? [table(["排序", "比分", "概率"], scores)] : [paragraph("没有可展示的已审计比分矩阵。")]),
-      section("市场比较", marketProbabilities(market) ? "blue" : "gold", marketBlocks(market, prediction)),
+      section("市场比较", marketAudit.values ? "blue" : "gold", marketBlocks(marketAudit, prediction)),
       section("淘汰赛分支", "gold", [paragraph(knockoutApplies ? "本节仅提示赛制存在90分钟后的晋级分支；当前模型不输出加时、点球或晋级概率。" : "本场赛制未提供适用的淘汰赛分支；不展示加时、点球或晋级概率。")]),
       section("不确定性与重算触发器", "red", [list(["官方首发或关键伤停发生变化", "赛制、开球时间或主客场口径变化", "出现截止时间内的新权威证据或现有证据冲突解除"])]),
       section("结论", "green", [paragraph(leadingOutcome(prediction, teams)), paragraph("请结合证据审计与缺失项阅读，不将低置信结果表述为确定赛果。")]),
@@ -200,35 +223,124 @@ function prematchDocument(data = {}) {
 }
 
 function actualOutcome(actual = {}) {
-  if (!Number.isInteger(actual.homeGoals) || !Number.isInteger(actual.awayGoals)) return null;
+  if (!Number.isInteger(actual.homeGoals) || actual.homeGoals < 0 || !Number.isInteger(actual.awayGoals) || actual.awayGoals < 0) return null;
   return actual.homeGoals > actual.awayGoals ? "主胜" : actual.homeGoals < actual.awayGoals ? "客胜" : "平局";
 }
 
+function acceptedClaimMap(audit = {}) {
+  return new Map(acceptedClaims(audit).filter((claim) => typeof claim?.claimId === "string" && claim.claimId).map((claim) => [claim.claimId, claim]));
+}
+
+function boundClaim(item, claims) {
+  const claimId = item?.sourceClaimId ?? item?.claimId;
+  if (typeof claimId !== "string" || !claimId) return null;
+  const claim = claims.get(claimId);
+  if (!claim) return null;
+  const claimResult = claim.value ?? claim.result;
+  if (claimResult && Number.isInteger(claimResult.homeGoals) && claimResult.homeGoals !== item.homeGoals) return null;
+  if (claimResult && Number.isInteger(claimResult.awayGoals) && claimResult.awayGoals !== item.awayGoals) return null;
+  return claim;
+}
+
+function outcomeProbability(outcome, prediction) {
+  if (outcome === "主胜") return prediction.homeWinProb;
+  if (outcome === "平局") return prediction.drawProb;
+  if (outcome === "客胜") return prediction.awayWinProb;
+  return null;
+}
+
+function predictedOutcome(prediction = {}) {
+  const values = [["主胜", prediction.homeWinProb], ["平局", prediction.drawProb], ["客胜", prediction.awayWinProb]]
+    .filter(([, value]) => Number.isFinite(value)).sort((left, right) => right[1] - left[1]);
+  return values[0]?.[0] ?? null;
+}
+
+function timelineBlocks(items, claims) {
+  const accepted = Array.isArray(items) ? items.filter((item) => boundClaim(item, claims)) : [];
+  if (!accepted.length) return [paragraph("事件时间线：未提供。")];
+  return [table(["时间", "事件", "球队", "来源证据"], accepted.map((item) => [
+    Number.isFinite(item.minute) ? `${item.minute}′` : text(item.occurredAt),
+    text(item.event ?? item.description),
+    text(item.teamName ?? item.teamId),
+    text(item.sourceClaimId ?? item.claimId)
+  ]))];
+}
+
+function statisticsBlocks(items, claims) {
+  const accepted = Array.isArray(items) ? items.filter((item) => boundClaim(item, claims)) : [];
+  if (!accepted.length) return [paragraph("过程统计：未提供。"), paragraph("来源口径：未提供。")];
+  return [table(["指标", "主队", "客队", "来源口径", "来源证据"], accepted.map((item) => [
+    text(item.metric), text(item.home), text(item.away), text(item.definition ?? item.metricDefinition), text(item.sourceClaimId ?? item.claimId)
+  ]))];
+}
+
+function calibrationBlocks(metrics = {}) {
+  return [table(["指标", "值"], [
+    ["Brier 分数", Number.isFinite(metrics.brierScore) ? fixed(metrics.brierScore, 4) : "未提供"],
+    ["对数损失", Number.isFinite(metrics.logLoss) ? fixed(metrics.logLoss, 4) : "未提供"],
+    ["样本量", Number.isInteger(metrics.sampleSize) && metrics.sampleSize >= 0 ? String(metrics.sampleSize) : "未提供"],
+    ["评估窗口", text(metrics.evaluationWindow)],
+    ["指标版本", text(metrics.version ?? metrics.method)]
+  ])];
+}
+
+function statusLabel(status) {
+  return ({ pending: "待人工批准", pending_human_review: "待人工复核", approved: "已批准", rejected: "已拒绝" })[status] ?? text(status);
+}
+
+function proposalBlocks(proposal = {}) {
+  return [table(["字段", "值"], [
+    ["提案 ID", text(proposal.proposalId)],
+    ["状态", statusLabel(proposal.status)],
+    ["摘要", text(proposal.summary)],
+    ["创建时间", text(proposal.createdAt)]
+  ]), paragraph("修正提案不会自动修改模型；只有人工批准且完成跨样本验证后，才可进入后续版本。")];
+}
+
+function approvalBlocks(approvals) {
+  if (!Array.isArray(approvals) || !approvals.length) return [paragraph("人工批准项：未提供。")];
+  return [table(["项目", "审批状态", "审批人", "决定时间"], approvals.map((item) => [
+    text(item.itemId ?? item.proposalId), statusLabel(item.status), text(item.approver ?? item.approvedBy), text(item.decidedAt ?? item.approvedAt)
+  ]))];
+}
+
 function postmatchDocument(data = {}) {
-  const { manifest = {}, prediction = {}, evidenceAudit = {}, market = null } = data;
-  const actual = data.actualResult ?? data.record ?? data.result ?? {};
+  const { manifest = {}, prediction = {}, evidenceAudit = {} } = data;
+  const postmatch = data.postmatch ?? {};
+  const binding = postmatch.prematchBinding ?? {};
+  const claims = acceptedClaimMap(evidenceAudit);
+  const candidateResult = postmatch.actualResult ?? data.actualResult ?? data.record ?? data.result ?? {};
+  const actual = boundClaim(candidateResult, claims) ? candidateResult : {};
   const teams = teamNames(manifest);
   const outcome = actualOutcome(actual);
-  const resultLine = outcome ? `实际赛果：${teams.home} ${actual.homeGoals}–${actual.awayGoals} ${teams.away}（${text(actual.decidedIn, "90min")}）` : "实际赛果：未提供，不能完成结果对照。";
-  const realized = outcome === "主胜" ? prediction.homeWinProb : outcome === "平局" ? prediction.drawProb : outcome === "客胜" ? prediction.awayWinProb : null;
-  const scores = scorelineRows(prediction);
-  const exact = outcome && scores.some((row) => row[1] === `${actual.homeGoals}–${actual.awayGoals}`);
+  const resultLine = outcome ? `实际赛果：${teams.home} ${actual.homeGoals}–${actual.awayGoals} ${teams.away}（${text(actual.decidedIn)}）` : "实际赛果：未提供。";
+  const realized = outcomeProbability(outcome, prediction);
+  const forecast = predictedOutcome(prediction);
+  const runId = binding.runId ?? postmatch.prematchRunId ?? manifest.parentRunId;
+  const predictionHash = binding.predictionHash ?? postmatch.predictionHash ?? manifest.artifacts?.prediction?.sha256;
+  const rewrite = postmatch.noPosthocRewrite ?? {};
   return {
     kicker: "可审计足球预测 · 赛后",
     title: `${teams.home} vs ${teams.away}｜赛后复盘报告`,
     meta: `复盘口径：90分钟 · 原预测模型：${text(prediction.modelVersion)}`,
     sections: [
-      section("实际赛果与口径", outcome ? "green" : "red", [paragraph(resultLine), list(regulationSummary(manifest.competitionProfile ?? {}))]),
-      section("复盘摘要", "green", [paragraph(outcome ? `模型对实际${outcome}分配的赛前概率为 ${percent(realized)}。` : "缺少实际赛果，以下仅保留预测基线。")]),
-      section("证据审计回放", evidenceAudit.status === "passed" ? "blue" : "red", auditBlocks(evidenceAudit)),
-      section("预测与实赛对照", "blue", [table(["项目", "赛前预测", "实际"], [["结果", leadingOutcome(prediction, teams), outcome ?? "未提供"], ["比分", scores[0]?.[1] ?? "未提供", outcome ? `${actual.homeGoals}–${actual.awayGoals}` : "未提供"]])]),
-      section("概率结果评估", "formula", [paragraph(outcome ? `实际结果的赛前分配概率：${percent(realized)}。复盘应评估概率校准，不以单场命中与否替代长期验证。` : "实际结果缺失，不能计算单场结果对应概率。")]),
-      section("比分偏差", "blue", [paragraph(outcome ? `实际比分${exact ? "位于" : "未位于"}报告展示的前五个比分候选中。` : "实际比分缺失。")]),
-      section("关键事件与战术复盘", "blue", claimBlocks(evidenceAudit, ["statistics", "tactics", "lineup", "injury"], "没有经审计的赛后关键事件或战术证据；不做叙事性补写。")),
-      section("环境与赛程复盘", "gold", claimBlocks(evidenceAudit, ["weather", "schedule"], "没有经审计的环境或赛程事实可供归因。")),
-      section("市场回看", marketProbabilities(market) ? "blue" : "gold", marketBlocks(market, prediction)),
-      section("偏差归因与校准建议", "red", [list(["区分数据缺失、证据冲突与模型结构误差，不凭单场结果自动改权重。", "只有经人工确认、跨样本验证的修正建议才进入后续模型版本。", "保留原始预测、实际结果和来源索引以支持复核。"])]),
-      section("复盘结论", "green", [paragraph(outcome ? `${resultLine}；本报告只评估原预测，不改写赛前概率。` : "复盘未完成：需要补充经审计的实际赛果。")]),
+      section("赛前运行绑定", runId && predictionHash ? "blue" : "red", [list([`赛前运行 ID：${text(runId)}`, `预测产物哈希：${text(predictionHash)}`])]),
+      section("赛果事实与事件时间线", outcome ? "green" : "red", [paragraph(resultLine), paragraph(`赛果观察时间：${outcome ? text(actual.observedAt) : "未提供"}`), paragraph(`赛果来源证据：${outcome ? text(actual.sourceClaimId ?? actual.claimId) : "未提供"}`), ...timelineBlocks(postmatch.eventTimeline, claims)]),
+      section("过程统计与来源口径", "blue", statisticsBlocks(postmatch.processStatistics, claims)),
+      section("预测命中审计", "formula", [table(["项目", "值"], [
+        ["赛前最高概率结果", text(forecast)],
+        ["实际90分钟结果", text(outcome)],
+        ["方向命中", outcome && forecast ? (outcome === forecast ? "是" : "否") : "未提供"],
+        ["实际结果赛前概率", outcome ? percent(realized) : "未提供"]
+      ])]),
+      section("校准指标", "formula", calibrationBlocks(postmatch.calibrationMetrics)),
+      section("禁止事后回写", rewrite.enforced === true && rewrite.predictionHashUnchanged === true ? "green" : "red", [table(["项目", "状态"], [
+        ["策略", "禁止事后回写"],
+        ["执行状态", rewrite.enforced === true ? "已执行" : rewrite.enforced === false ? "未执行" : "未提供"],
+        ["预测哈希保持不变", rewrite.predictionHashUnchanged === true ? "是" : rewrite.predictionHashUnchanged === false ? "否" : "未提供"]
+      ])]),
+      section("修正提案", "gold", proposalBlocks(postmatch.revisionProposal)),
+      section("人工批准项", "red", approvalBlocks(postmatch.humanApprovals ?? postmatch.approvals)),
       section("来源索引", "blue", sourceBlocks(evidenceAudit))
     ]
   };

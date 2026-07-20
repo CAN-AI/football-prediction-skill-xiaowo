@@ -29,24 +29,62 @@ Markdown 与 HTML 由 `core/report.mjs` 中同一个章节文档生成。PNG 只
 14. 结论
 15. 来源索引
 
-市场数据为空时只说明“未提供经审计的市场概率”，不得生成市场概率或差值。来源索引只列 `evidenceAudit.accepted` 中的证据，未接受证据只计数，不展示为事实。
+市场概率只有同时满足以下条件时才可展示：
+
+- `audited` 严格等于 `true`；
+- `scope` / `resultScope` 明确为 90 分钟，且 `probabilityType` / `method` 明确为 `de_vig`（也接受等价的显式去水标记）；
+- `observedAt` 是非空有效时间；
+- `source` 或 `sourceUrl` 非空；
+- 主胜、平局、客胜概率均在 `[0, 1]`，且三者之和在 `0.001` 容差内等于 1。
+
+任一条件不满足时，不得输出市场概率和差值；市场章节只显示门禁失败说明，证据审计的缺失信息列出失败原因。来源索引只列 `evidenceAudit.accepted` 中的证据，未接受证据只计数，不展示为事实。
 
 ## 赛后章节顺序
 
-1. 实际赛果与口径
-2. 复盘摘要
-3. 证据审计回放
-4. 预测与实赛对照
-5. 概率结果评估
-6. 比分偏差
-7. 关键事件与战术复盘
-8. 环境与赛程复盘
-9. 市场回看
-10. 偏差归因与校准建议
-11. 复盘结论
-12. 来源索引
+1. 赛前运行绑定
+2. 赛果事实与事件时间线
+3. 过程统计与来源口径
+4. 预测命中审计
+5. 校准指标
+6. 禁止事后回写
+7. 修正提案
+8. 人工批准项
+9. 来源索引
 
 赛后报告保留原预测概率，不以实际结果改写赛前预测，也不凭单场结果自动调整模型权重。
+
+## 结构化赛后输入
+
+推荐在输入根对象使用 `postmatch`：
+
+```json
+{
+  "postmatch": {
+    "prematchBinding": { "runId": "...", "predictionHash": "..." },
+    "actualResult": {
+      "homeGoals": 2,
+      "awayGoals": 1,
+      "decidedIn": "90min",
+      "observedAt": "2026-08-01T17:00:00Z",
+      "sourceClaimId": "result-claim-id"
+    },
+    "eventTimeline": [
+      { "minute": 18, "event": "主队进球", "teamId": "HOME", "sourceClaimId": "event-claim-id" }
+    ],
+    "processStatistics": [
+      { "metric": "射门", "home": 14, "away": 8, "definition": "官方全场射门口径", "sourceClaimId": "stats-claim-id" }
+    ],
+    "calibrationMetrics": { "brierScore": 0.31, "logLoss": 0.8, "sampleSize": 1 },
+    "noPosthocRewrite": { "enforced": true, "predictionHashUnchanged": true },
+    "revisionProposal": { "proposalId": "...", "status": "pending_human_review", "summary": "..." },
+    "humanApprovals": [
+      { "itemId": "...", "status": "pending", "approver": null, "decidedAt": null }
+    ]
+  }
+}
+```
+
+`actualResult`、`eventTimeline` 和 `processStatistics` 的每一项都必须以 `sourceClaimId`（或同名 `claimId`）绑定 `evidenceAudit.accepted` 中的 claim。赛果 claim 若带结构化比分，其比分还必须与 `actualResult` 相同。绑定缺失、指向未接受 claim 或比分冲突时，对应事实全部显示“未提供”，不得泄露原始数值。运行绑定、校准、回写治理、修正提案和人工批准字段缺失时同样明确显示“未提供”。
 
 ## 视觉系统
 

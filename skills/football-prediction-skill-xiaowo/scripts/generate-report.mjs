@@ -22,6 +22,7 @@ function parseArguments(argumentsList) {
 
 function reportMode(fixture) {
   if (fixture?.manifest?.mode === "postmatch" || fixture?.mode === "postmatch") return "postmatch";
+  if (fixture?.postmatch && typeof fixture.postmatch === "object") return "postmatch";
   if (fixture?.actualResult || fixture?.record || fixture?.result) return "postmatch";
   return "prematch";
 }

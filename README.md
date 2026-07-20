@@ -59,7 +59,7 @@ Copy-Item -Recurse .\skills\worldcup-prediction-skill-xiaowo "$env:USERPROFILE\.
 
 ## v3 通用足球预测骨架
 
-v3 新增独立的 `football-prediction-skill-xiaowo`，覆盖联赛、国内杯赛、洲际俱乐部赛事、国家队赛事和友谊赛。它保留现有世界杯 v1 快速开始、`worldcup-xiaowo` 命令和原有语义；新的发布入口为 `football-xiaowo`，后续 v3 功能在该入口中演进。
+v3 新增独立的 `football-prediction-skill-xiaowo`，覆盖联赛、国内杯赛、洲际俱乐部赛事、国家队赛事和友谊赛。它保留现有世界杯 v1 快速开始、`worldcup-xiaowo` 命令和原有语义；新的发布入口 `football-xiaowo` 会把 `audit`、`predict`、`report`、`pipeline`、`record`、`calibrate` 分发到对应 v3 脚本。
 
 验证 v3 骨架：
 
@@ -77,7 +77,27 @@ node ./skills/football-prediction-skill-xiaowo/scripts/run-pipeline.mjs \
   --out-dir ./.tmp-v3-pipeline
 ```
 
-流水线按“输入加载 → 赛事画像与清单校验 → 证据审计 → 审计快照 → 90 分钟预测 → 同源 Markdown/HTML 报告 → PNG 长图与渲染审计 → SHA-256 → 最终清单”的固定顺序运行。每次运行写入 `<out-dir>/<runId>/`；同名运行目录已存在时会直接失败，不覆写旧预测。正式完成要求 `input-snapshot.json`、`prediction.json`、`report.md`、`report-long.html`、`report-long.png` 和 `render-audit.json` 全部使用固定相对文件名、带 SHA-256，且渲染审计无错误，最终索引写入 `run-manifest.json`。
+安装包后也可直接使用根 CLI；参数与对应脚本完全一致：
+
+```bash
+football-xiaowo audit --ledger ./skills/football-prediction-skill-xiaowo/assets/sample-data/league-evidence.json --out ./audit.json
+football-xiaowo predict --input ./skills/football-prediction-skill-xiaowo/assets/sample-data/club-league-snapshot.json --out ./prediction.json
+football-xiaowo report --fixture ./skills/football-prediction-skill-xiaowo/assets/sample-data/club-league-snapshot.json --out-dir ./.tmp-v3-report
+football-xiaowo pipeline --input ./skills/football-prediction-skill-xiaowo/assets/sample-data/club-league-snapshot.json --out-dir ./.tmp-v3-pipeline
+football-xiaowo record --manifest <run-manifest.json> --prediction <prediction.json> --facts <facts.json> --out <record.json>
+football-xiaowo calibrate --records ./skills/football-prediction-skill-xiaowo/assets/sample-data/postmatch-records.json --out ./calibration-proposal.json
+```
+
+流水线按“输入加载 → 赛事画像与清单校验 → 证据审计 → 独立账本/审计 → 审计快照 → 90 分钟预测 → 同源 Markdown/HTML 报告 → PNG 长图与渲染审计 → SHA-256 → 最终清单”的固定顺序运行。每次运行写入 `<out-dir>/<runId>/`；同名运行目录已存在时会直接失败，不覆写旧预测。正式完成要求 `evidence-ledger.json`、`audit.json`、`input-snapshot.json`、`prediction.json`、`report.md`、`report-long.html`、`report-long.png` 和 `render-audit.json` 全部使用固定相对文件名、带字节数与 SHA-256，且渲染审计无错误，最终索引写入 `run-manifest.json`。
+
+赛后正式发布使用父赛前运行目录创建新的 `postmatch` 子运行，不回写赛前目录：
+
+```bash
+node ./skills/football-prediction-skill-xiaowo/scripts/run-postmatch-pipeline.mjs \
+  --prematch-run-dir <赛前运行目录> \
+  --input ./skills/football-prediction-skill-xiaowo/assets/sample-data/postmatch-input.json \
+  --out-dir ./.tmp-v3-postmatch
+```
 
 ### v3 验证与打包
 
@@ -88,7 +108,7 @@ npm run pipeline:v3:sample
 npm pack --dry-run
 ```
 
-发布包使用 `package.json#files` 白名单，只包含 CLI、示例、v1/v2 Skill、v3 Skill 和验证记录；本地报告、临时渲染目录及 Superpowers 过程文件不进入包。2026-07-20 的测试总数、渲染审计、MiniMax 外部试跑状态和打包路径清单见 [v3 验证记录](./docs/v3/validation-2026-07-20.md)。
+发布包使用 `package.json#files` 白名单，包含 CLI、示例、v1/v2 Skill、v3 Skill、README 引用的 v1 根文档/图片和 v3 验证记录；本地报告、临时渲染目录、Superpowers 过程文件及内部计划不进入包。2026-07-20 的测试总数、渲染审计、MiniMax 外部试跑状态和打包路径清单见 [v3 验证记录](./docs/v3/validation-2026-07-20.md)。
 
 ### v3 工程流程图
 

@@ -10,6 +10,8 @@
     "examples/",
     "skills/worldcup-prediction-skill-xiaowo/",
     "skills/football-prediction-skill-xiaowo/",
+    "docs/*.md",
+    "docs/assets/",
     "docs/v3/validation-2026-07-20.md"
   ],
   "bin": {

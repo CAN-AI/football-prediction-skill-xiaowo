@@ -395,12 +395,14 @@ test("报告 CLI 从一个样例同源生成 Markdown、HTML、PNG 和审计", a
   }
 });
 
-test("报告 CLI 自动识别结构化 postmatch 夹具", async () => {
+test("报告 CLI 拒绝把伪造且未定稿的 postmatch 夹具当作正式报告", async () => {
   const outputDirectory = await mkdtemp(join(tmpdir(), "football-postmatch-cli-"));
   const fixturePath = join(outputDirectory, "postmatch-fixture.json");
   const fixture = JSON.parse(await readFile(new URL("../assets/sample-data/club-league-snapshot.json", import.meta.url), "utf8"));
   fixture.manifest.mode = "postmatch";
   fixture.manifest.parentRunId = "prematch-cli-run";
+  fixture.manifest.finalizedAt = null;
+  fixture.manifest.artifacts = {};
   fixture.evidenceAudit.accepted = [{
     claimId: "result-cli-1",
     topic: "result",
@@ -414,10 +416,10 @@ test("报告 CLI 自动识别结构化 postmatch 夹具", async () => {
   };
   await writeFile(fixturePath, JSON.stringify(fixture), "utf8");
   try {
-    await execFileAsync(process.execPath, [fileURLToPath(new URL("../scripts/generate-report.mjs", import.meta.url)), "--fixture", fixturePath, "--out-dir", outputDirectory]);
-    const markdown = await readFile(join(outputDirectory, "report.md"), "utf8");
-    assert.match(markdown, /## 赛前运行绑定/);
-    assert.match(markdown, /实际赛果：ARS 1–0 CHE/);
+    await assert.rejects(
+      execFileAsync(process.execPath, [fileURLToPath(new URL("../scripts/generate-report.mjs", import.meta.url)), "--fixture", fixturePath, "--out-dir", outputDirectory]),
+      (error) => error.code === 1 && /postmatch.*run-dir|定稿.*运行|赛后流水线/i.test(error.stderr)
+    );
   } finally {
     await rm(outputDirectory, { recursive: true, force: true });
   }

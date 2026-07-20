@@ -20,10 +20,10 @@ function printHelp() {
   console.log("命令：");
   console.log("  audit      审计证据账本");
   console.log("  predict    生成 90 分钟预测 JSON");
-  console.log("  report     生成同源 Markdown/HTML/PNG 报告");
+  console.log("  report     生成赛前报告或复验已定稿赛后父子运行");
   console.log("  pipeline   运行不可变赛前发布流水线");
   console.log("  record     从原始赛后账本生成审计记录");
-  console.log("  calibrate  生成带 30 场门槛的校准提案");
+  console.log("  calibrate  从已复验父子运行生成 30 场门槛校准提案");
   console.log("  --version  输出 v3 版本");
   console.log("运行 football-xiaowo <command> 可查看该命令的完整参数用法。");
 }

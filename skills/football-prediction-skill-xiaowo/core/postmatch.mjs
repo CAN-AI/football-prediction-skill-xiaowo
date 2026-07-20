@@ -74,7 +74,9 @@ export function competitionProfileKey(profile = {}) {
     level: profile.level ?? null,
     stage: profile.stage ?? null,
     baselineVersion: profile.baselineVersion ?? null,
+    goalsPerTeam: profile.baseline?.goalsPerTeam ?? null,
     sampleWindow: profile.baseline?.sampleWindow ?? null,
+    homeAdvantage: profile.homeAdvantage ?? null,
     regulation: {
       twoLegged: profile.regulation?.twoLegged ?? null,
       extraTime: profile.regulation?.extraTime ?? null,
@@ -82,7 +84,7 @@ export function competitionProfileKey(profile = {}) {
       neutralVenue: profile.regulation?.neutralVenue ?? null
     }
   };
-  return `profile-v1:${contentHash(relevant)}`;
+  return `profile-v2:${contentHash(relevant)}`;
 }
 
 export function recordPostmatch({ manifest, prediction, facts } = {}) {

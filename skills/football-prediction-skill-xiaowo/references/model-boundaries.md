@@ -5,6 +5,7 @@
 ## 输入
 
 - `manifest.competitionProfile.baseline.goalsPerTeam` 是唯一的进球均值基线，必须来自已审计的同赛事画像；模型不会借用世界杯或其他赛事的固定均值。
+- `manifest.competitionProfile.homeAdvantage` 是主队预期进球增量，必须在 `[0, 1]` 内，中立场必须为 `0`，并与同一条已接受赛事基线 claim 的 `value.homeAdvantage` 严格同值。模型不再为缺失值回退到 `0`。
 - `snapshot.teams` 必须以比赛主、客队 ID 为键提供 `rating`、`attack` 和 `defense` 数值。缺失数值会中止计算，不以默认球队数据填补。
 - `evidenceAudit.status: "passed"` 必须同时提供审计产生的 `high` 或 `medium` 置信标签；`degraded_low_confidence` 一律在结果和追溯中记为 `low`；`failed` 或未知状态会拒绝预测，且不会读取其中的 `accepted` 项。低置信状态不会生成任何补充事实。
 

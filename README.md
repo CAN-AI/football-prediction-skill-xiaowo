@@ -83,9 +83,10 @@ node ./skills/football-prediction-skill-xiaowo/scripts/run-pipeline.mjs \
 football-xiaowo audit --ledger ./skills/football-prediction-skill-xiaowo/assets/sample-data/league-evidence.json --out ./audit.json
 football-xiaowo predict --input ./skills/football-prediction-skill-xiaowo/assets/sample-data/club-league-snapshot.json --out ./prediction.json
 football-xiaowo report --fixture ./skills/football-prediction-skill-xiaowo/assets/sample-data/club-league-snapshot.json --out-dir ./.tmp-v3-report
+football-xiaowo report --run-dir <赛后运行目录> --prematch-run-dir <父赛前运行目录>
 football-xiaowo pipeline --input ./skills/football-prediction-skill-xiaowo/assets/sample-data/club-league-snapshot.json --out-dir ./.tmp-v3-pipeline
 football-xiaowo record --manifest <run-manifest.json> --prediction <prediction.json> --facts <facts.json> --out <record.json>
-football-xiaowo calibrate --records ./skills/football-prediction-skill-xiaowo/assets/sample-data/postmatch-records.json --out ./calibration-proposal.json
+football-xiaowo calibrate --runs ./postmatch-runs.json --out ./calibration-proposal.json
 ```
 
 流水线按“输入加载 → 赛事画像与清单校验 → 证据审计 → 独立账本/审计 → 审计快照 → 90 分钟预测 → 同源 Markdown/HTML 报告 → PNG 长图与渲染审计 → SHA-256 → 最终清单”的固定顺序运行。每次运行写入 `<out-dir>/<runId>/`；同名运行目录已存在时会直接失败，不覆写旧预测。正式完成要求 `evidence-ledger.json`、`audit.json`、`input-snapshot.json`、`prediction.json`、`report.md`、`report-long.html`、`report-long.png` 和 `render-audit.json` 全部使用固定相对文件名、带字节数与 SHA-256，且渲染审计无错误，最终索引写入 `run-manifest.json`。
@@ -98,6 +99,8 @@ node ./skills/football-prediction-skill-xiaowo/scripts/run-postmatch-pipeline.mj
   --input ./skills/football-prediction-skill-xiaowo/assets/sample-data/postmatch-input.json \
   --out-dir ./.tmp-v3-postmatch
 ```
+
+赛后 `report` 命令只复验已定稿父子运行，不接受可编辑 postmatch fixture；它重建 Markdown/HTML、临时重渲染 PNG 并逐字节比较，不重写正式报告。校准索引 `postmatch-runs.json` 的每项只包含 `postmatchRunDir` 与 `prematchRunDir`；CLI 会重新校验全部 SHA、内外层 manifest、父子关系、父运行入模证据与重算预测、赛果证据、审计及重算记录。画像键 v2 包含实际进球基线与主场优势，不能用不同 lambda 配置或自报质量字段凑足 30 场。
 
 ### v3 验证与打包
 

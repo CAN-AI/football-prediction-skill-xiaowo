@@ -26,6 +26,7 @@
     "sampleWindow": { "from": "2025-08-01", "to": "2026-05-31", "matchCount": 380 },
     "evidenceClaimIds": ["eng-pl-baseline-2026-27"]
   },
+  "homeAdvantage": 0.12,
   "regulation": {
     "extraTime": false,
     "penalties": false,
@@ -35,7 +36,7 @@
 }
 ```
 
-`baseline.goalsPerTeam`、`baseline.sampleWindow` 与 `baseline.evidenceClaimIds` 是正式发布必填字段。绑定 claim 必须在本次 `audit.json` 中被接受，主体匹配赛事/赛季、`metricDefinitionVersion` 匹配 `baselineVersion`，且值与样本窗口逐字段一致。球队 `rating/attack/defense` 同样要通过 `snapshot.teams.<teamId>.evidenceClaimId` 绑定本次已接受统计 claim；不得从另一赛事、赛季或旧审计静默继承。
+`baseline.goalsPerTeam`、`baseline.sampleWindow`、`baseline.evidenceClaimIds` 与 `[0, 1]` 内的 `homeAdvantage` 是正式发布必填字段；中立场的 `homeAdvantage` 必须为 `0`。绑定 claim 必须在本次 `audit.json` 中被接受，主体匹配赛事/赛季、`metricDefinitionVersion` 匹配 `baselineVersion`，且 `goalsPerTeam`、`sampleWindow`、`homeAdvantage` 均与画像严格一致。球队 `rating/attack/defense` 同样要通过 `snapshot.teams.<teamId>.evidenceClaimId` 绑定本次已接受统计 claim；不得从另一赛事、赛季或旧审计静默继承。
 
 ## 选择顺序
 
@@ -54,4 +55,4 @@
 
 ## 可比较样本
 
-赛后校准只在相同 `competitionProfileKey` 内聚合。至少 30 场样本必须都满足：赛前发布、预测哈希可验证、比赛口径相同、结果证据已审计、标记为可比较。跨赛事族、跨不兼容规则或事后补造的样本不得凑数。
+赛后校准只在相同 `competitionProfileKey` v2 内聚合；该键包含 `baseline.goalsPerTeam` 与 `homeAdvantage` 的实际值，不只依赖版本标签。至少 30 场样本必须都满足：赛前发布、预测哈希可验证、比赛口径相同、结果证据已审计、标记为可比较。跨赛事族、跨不兼容规则、不同 lambda 配置或事后补造的样本不得凑数。

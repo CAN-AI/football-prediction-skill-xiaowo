@@ -1,11 +1,13 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import { execFile } from "node:child_process";
+import { createHash } from "node:crypto";
 import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { promisify } from "node:util";
+import { auditEvidenceLedger } from "../core/evidence.mjs";
 import * as pipeline from "../core/pipeline.mjs";
 import * as postmatch from "../core/postmatch.mjs";
 import { buildPostmatchReport } from "../core/report.mjs";
@@ -31,6 +33,7 @@ const profile = {
     sampleWindow: { from: "2025-08-01", to: "2026-05-31", matchCount: 380 },
     evidenceClaimIds: ["baseline-1"]
   },
+  homeAdvantage: 0.12,
   regulation: { twoLegged: false, extraTime: false, penalties: false, neutralVenue: false }
 };
 
@@ -110,6 +113,17 @@ test("postmatch 流水线新建子运行、重新审计赛果并哈希全部产�
   try {
     const prematchRun = await pipeline.runPrematchPipeline({ input: prematchInput, outDir: outputRoot });
     const parentPredictionBefore = await readFile(prematchRun.paths.prediction);
+    {
+      const parentManifestBytes = await readFile(prematchRun.paths.manifest);
+      const invalidParentManifest = JSON.parse(parentManifestBytes.toString("utf8"));
+      invalidParentManifest.competitionProfile.homeAdvantage = 999;
+      await writeFile(prematchRun.paths.manifest, `${JSON.stringify(invalidParentManifest, null, 2)}\n`, "utf8");
+      await assert.rejects(
+        pipeline.loadPublishedRun(prematchRun.runDirectory, { expectedMode: "prematch" }),
+        /homeAdvantage|主场/
+      );
+      await writeFile(prematchRun.paths.manifest, parentManifestBytes);
+    }
     const result = await pipeline.runPostmatchPipeline({
       prematchRunDir: prematchRun.runDirectory,
       input: postmatchInput,
@@ -131,6 +145,170 @@ test("postmatch 流水线新建子运行、重新审计赛果并哈希全部产�
     assert.equal(manifest.artifacts.prediction.sha256, prematchRun.manifest.artifacts.prediction.sha256);
     assert.deepEqual(await readFile(prematchRun.paths.prediction), parentPredictionBefore);
     assert.deepEqual(pipeline.validatePublishedRun(manifest), { ok: true, errors: [] });
+    const reportBeforeVerification = await readFile(result.paths.reportMarkdown);
+    const rootCli = fileURLToPath(new URL("../../../bin/football-xiaowo.mjs", import.meta.url));
+    const verification = await execFileAsync(process.execPath, [
+      rootCli,
+      "report",
+      "--run-dir",
+      result.runDirectory,
+      "--prematch-run-dir",
+      prematchRun.runDirectory
+    ]);
+    assert.match(verification.stdout, /赛后报告.*复验通过/);
+    assert.deepEqual(await readFile(result.paths.reportMarkdown), reportBeforeVerification);
+    {
+      const originalInputSnapshotBytes = await readFile(result.paths.inputSnapshot);
+      const originalManifestBytes = await readFile(result.paths.manifest);
+      const tamperedInputSnapshot = JSON.parse(originalInputSnapshotBytes.toString("utf8"));
+      tamperedInputSnapshot.manifest.runId = "invented-child";
+      const tamperedInputSnapshotBytes = Buffer.from(`${JSON.stringify(tamperedInputSnapshot, null, 2)}\n`, "utf8");
+      const rehashedManifest = JSON.parse(originalManifestBytes.toString("utf8"));
+      rehashedManifest.artifacts.inputSnapshot.sha256 = createHash("sha256").update(tamperedInputSnapshotBytes).digest("hex");
+      rehashedManifest.artifacts.inputSnapshot.byteLength = tamperedInputSnapshotBytes.byteLength;
+      await writeFile(result.paths.inputSnapshot, tamperedInputSnapshotBytes);
+      await writeFile(result.paths.manifest, `${JSON.stringify(rehashedManifest, null, 2)}\n`, "utf8");
+      await assert.rejects(
+        execFileAsync(process.execPath, [
+          rootCli,
+          "report",
+          "--run-dir",
+          result.runDirectory,
+          "--prematch-run-dir",
+          prematchRun.runDirectory
+        ]),
+        /input-snapshot\.json.*manifest\.runId/
+      );
+      await writeFile(result.paths.inputSnapshot, originalInputSnapshotBytes);
+      await writeFile(result.paths.manifest, originalManifestBytes);
+    }
+    {
+      const originalManifestBytes = await readFile(result.paths.manifest);
+      const tamperedReportBytes = Buffer.from("# 伪造赛后报告\n", "utf8");
+      const rehashedManifest = JSON.parse(originalManifestBytes.toString("utf8"));
+      rehashedManifest.artifacts.reportMarkdown.sha256 = createHash("sha256").update(tamperedReportBytes).digest("hex");
+      rehashedManifest.artifacts.reportMarkdown.byteLength = tamperedReportBytes.byteLength;
+      await writeFile(result.paths.reportMarkdown, tamperedReportBytes);
+      await writeFile(result.paths.manifest, `${JSON.stringify(rehashedManifest, null, 2)}\n`, "utf8");
+      await assert.rejects(
+        execFileAsync(process.execPath, [
+          rootCli,
+          "report",
+          "--run-dir",
+          result.runDirectory,
+          "--prematch-run-dir",
+          prematchRun.runDirectory
+        ]),
+        /report\.md.*同源/
+      );
+      await writeFile(result.paths.reportMarkdown, reportBeforeVerification);
+      await writeFile(result.paths.manifest, originalManifestBytes);
+    }
+    {
+      const originalManifestBytes = await readFile(result.paths.manifest);
+      const originalPngBytes = await readFile(result.paths.reportPng);
+      const tamperedPngBytes = Buffer.from("not-a-real-png", "utf8");
+      const rehashedManifest = JSON.parse(originalManifestBytes.toString("utf8"));
+      rehashedManifest.artifacts.reportPng.sha256 = createHash("sha256").update(tamperedPngBytes).digest("hex");
+      rehashedManifest.artifacts.reportPng.byteLength = tamperedPngBytes.byteLength;
+      await writeFile(result.paths.reportPng, tamperedPngBytes);
+      await writeFile(result.paths.manifest, `${JSON.stringify(rehashedManifest, null, 2)}\n`, "utf8");
+      await assert.rejects(
+        execFileAsync(process.execPath, [
+          rootCli,
+          "report",
+          "--run-dir",
+          result.runDirectory,
+          "--prematch-run-dir",
+          prematchRun.runDirectory
+        ]),
+        /report-long\.png.*同源/
+      );
+      await writeFile(result.paths.reportPng, originalPngBytes);
+      await writeFile(result.paths.manifest, originalManifestBytes);
+    }
+    const runsIndexPath = join(outputRoot, "calibration-runs.json");
+    const proposalPath = join(outputRoot, "calibration-proposal.json");
+    await writeFile(runsIndexPath, JSON.stringify({ runs: [{
+      postmatchRunDir: result.runDirectory,
+      prematchRunDir: prematchRun.runDirectory
+    }] }), "utf8");
+    const calibrationScript = fileURLToPath(new URL("../scripts/propose-calibration.mjs", import.meta.url));
+    await execFileAsync(process.execPath, [calibrationScript, "--runs", runsIndexPath, "--out", proposalPath]);
+    const proposal = JSON.parse(await readFile(proposalPath, "utf8"));
+    assert.equal(proposal.comparableSampleCount, 1);
+    assert.equal(proposal.eligibility, "insufficient_sample");
+
+    {
+      const parentEvidenceBytes = await readFile(prematchRun.paths.evidenceLedger);
+      const parentAuditBytes = await readFile(prematchRun.paths.audit);
+      const parentManifestBytes = await readFile(prematchRun.paths.manifest);
+      const emptyEvidence = JSON.parse(parentEvidenceBytes.toString("utf8"));
+      emptyEvidence.ledger = [];
+      const emptyEvidenceBytes = Buffer.from(`${JSON.stringify(emptyEvidence, null, 2)}\n`, "utf8");
+      const emptyAudit = auditEvidenceLedger({
+        ledger: [],
+        match: prematchRun.manifest.match,
+        cutoffAt: prematchRun.manifest.dataCutoffAt
+      });
+      const emptyAuditBytes = Buffer.from(`${JSON.stringify(emptyAudit, null, 2)}\n`, "utf8");
+      const rehashedParentManifest = JSON.parse(parentManifestBytes.toString("utf8"));
+      rehashedParentManifest.artifacts.evidenceLedger.sha256 = createHash("sha256").update(emptyEvidenceBytes).digest("hex");
+      rehashedParentManifest.artifacts.evidenceLedger.byteLength = emptyEvidenceBytes.byteLength;
+      rehashedParentManifest.artifacts.audit.sha256 = createHash("sha256").update(emptyAuditBytes).digest("hex");
+      rehashedParentManifest.artifacts.audit.byteLength = emptyAuditBytes.byteLength;
+      rehashedParentManifest.artifacts.audit.metadata.evidenceAudit = {
+        status: emptyAudit.status,
+        missing: emptyAudit.missing,
+        conflicts: emptyAudit.conflicts
+      };
+      await writeFile(prematchRun.paths.evidenceLedger, emptyEvidenceBytes);
+      await writeFile(prematchRun.paths.audit, emptyAuditBytes);
+      await writeFile(prematchRun.paths.manifest, `${JSON.stringify(rehashedParentManifest, null, 2)}\n`, "utf8");
+      await assert.rejects(
+        execFileAsync(process.execPath, [calibrationScript, "--runs", runsIndexPath, "--out", join(outputRoot, "missing-parent-evidence-proposal.json")]),
+        /homeAdvantage|rating\/attack\/defense|模型输入.*绑定|基线绑定/
+      );
+      await writeFile(prematchRun.paths.evidenceLedger, parentEvidenceBytes);
+      await writeFile(prematchRun.paths.audit, parentAuditBytes);
+      await writeFile(prematchRun.paths.manifest, parentManifestBytes);
+    }
+
+    const recordBytes = await readFile(result.paths.record);
+    const tamperedRecord = JSON.parse(recordBytes.toString("utf8"));
+    tamperedRecord.publishedBeforeKickoff = false;
+    await writeFile(result.paths.record, `${JSON.stringify(tamperedRecord, null, 2)}\n`, "utf8");
+    await assert.rejects(
+      execFileAsync(process.execPath, [calibrationScript, "--runs", runsIndexPath, "--out", join(outputRoot, "tampered-record-proposal.json")]),
+      /record\.json.*SHA-256/
+    );
+    await writeFile(result.paths.record, recordBytes);
+
+    const manifestBytes = await readFile(result.paths.manifest);
+    const wrongParentManifest = JSON.parse(manifestBytes.toString("utf8"));
+    wrongParentManifest.parentRunId = "invented-parent";
+    await writeFile(result.paths.manifest, `${JSON.stringify(wrongParentManifest, null, 2)}\n`, "utf8");
+    await assert.rejects(
+      execFileAsync(process.execPath, [calibrationScript, "--runs", runsIndexPath, "--out", join(outputRoot, "wrong-parent-proposal.json")]),
+      /parentRunId.*prematch/
+    );
+    await writeFile(result.paths.manifest, manifestBytes);
+
+    const evidenceBytes = await readFile(result.paths.evidenceLedger);
+    const tamperedEvidence = JSON.parse(evidenceBytes.toString("utf8"));
+    tamperedEvidence.ledger[0].value.homeGoals = 3;
+    const tamperedEvidenceBytes = Buffer.from(`${JSON.stringify(tamperedEvidence, null, 2)}\n`, "utf8");
+    const rehashedManifest = JSON.parse(manifestBytes.toString("utf8"));
+    rehashedManifest.artifacts.evidenceLedger.sha256 = createHash("sha256").update(tamperedEvidenceBytes).digest("hex");
+    rehashedManifest.artifacts.evidenceLedger.byteLength = tamperedEvidenceBytes.byteLength;
+    await writeFile(result.paths.evidenceLedger, tamperedEvidenceBytes);
+    await writeFile(result.paths.manifest, `${JSON.stringify(rehashedManifest, null, 2)}\n`, "utf8");
+    await assert.rejects(
+      execFileAsync(process.execPath, [calibrationScript, "--runs", runsIndexPath, "--out", join(outputRoot, "tampered-evidence-proposal.json")]),
+      /audit\.json.*重新审计/
+    );
+    await writeFile(result.paths.evidenceLedger, evidenceBytes);
+    await writeFile(result.paths.manifest, manifestBytes);
     await assert.rejects(
       pipeline.runPostmatchPipeline({ prematchRunDir: prematchRun.runDirectory, input: postmatchInput, outDir: outputRoot }),
       /拒绝覆写旧赛后运行/
@@ -145,6 +323,11 @@ test("赛事画像键必须区分赛季、基线、规则和样本窗口", () =>
   const baseKey = postmatch.competitionProfileKey(profile);
   assert.notEqual(baseKey, postmatch.competitionProfileKey({ ...profile, season: "2027-28" }));
   assert.notEqual(baseKey, postmatch.competitionProfileKey({ ...profile, baselineVersion: "eng-pl-2026-27-r2" }));
+  assert.notEqual(baseKey, postmatch.competitionProfileKey({
+    ...profile,
+    baseline: { ...profile.baseline, goalsPerTeam: 2.1 }
+  }));
+  assert.notEqual(baseKey, postmatch.competitionProfileKey({ ...profile, homeAdvantage: 0.3 }));
   assert.notEqual(baseKey, postmatch.competitionProfileKey({
     ...profile,
     regulation: { ...profile.regulation, neutralVenue: true }

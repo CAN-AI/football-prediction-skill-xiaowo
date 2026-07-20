@@ -6,7 +6,13 @@ import { MODEL_VERSION, predict90 } from "./model.mjs";
 import { renderLongPng } from "./render.mjs";
 import { buildPostmatchReport, buildPrematchReport } from "./report.mjs";
 import { recordPostmatch } from "./postmatch.mjs";
-import { appendArtifact, createRunManifest, finalizeRunManifest } from "./schema.mjs";
+import {
+  appendArtifact,
+  assertMatchOrientation,
+  createRunManifest,
+  finalizeRunManifest,
+  validateCompetitionProfile
+} from "./schema.mjs";
 import { contentHash } from "./utils.mjs";
 
 const REQUIRED_ARTIFACTS = Object.freeze([
@@ -86,10 +92,11 @@ function assertAuditedModelBindings({ manifest, snapshot, evidenceAudit }) {
     && expectedSubjects.has(claim.subject)
     && claim.metricDefinitionVersion === profile.baselineVersion
     && Number(claim.value?.goalsPerTeam) === baseline.goalsPerTeam
+    && claim.value?.homeAdvantage === profile.homeAdvantage
     && contentHash(claim.value?.sampleWindow) === contentHash(baseline.sampleWindow)
   ));
   if (!baselineBound) {
-    throw new Error("赛事画像 baseline.goalsPerTeam/sampleWindow/baselineVersion 未与同赛事已审计证据严格绑定。");
+    throw new Error("赛事画像 baseline.goalsPerTeam/sampleWindow/baselineVersion/homeAdvantage 未与同赛事已审计证据严格绑定。");
   }
 
   for (const teamId of [manifest.match.homeTeamId, manifest.match.awayTeamId]) {
@@ -143,6 +150,180 @@ async function sha256File(path) {
 
 async function writeJson(path, value) {
   await writeFile(path, `${JSON.stringify(value, null, 2)}\n`, "utf8");
+}
+
+function parseJsonArtifact(bytes, fileName) {
+  try {
+    return JSON.parse(bytes.toString("utf8"));
+  } catch (error) {
+    throw new Error(`${fileName} 不是有效 JSON。`, { cause: error });
+  }
+}
+
+function assertFinalizedAt(manifest) {
+  if (typeof manifest?.finalizedAt !== "string"
+    || !/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d+)?(?:Z|[+-]\d{2}:\d{2})$/.test(manifest.finalizedAt)
+    || !Number.isFinite(Date.parse(manifest.finalizedAt))) {
+    throw new Error("正式运行的 finalizedAt 必须是有效的非空 ISO 时间。");
+  }
+}
+
+function assertSnapshotManifestBinding(snapshotManifest, publishedManifest, label) {
+  for (const field of ["runId", "skillVersion", "modelVersion", "createdAt", "dataCutoffAt", "mode", "parentRunId"]) {
+    if (snapshotManifest?.[field] !== publishedManifest?.[field]) {
+      throw new Error(`${label} input-snapshot.json 的 manifest.${field} 与外层定稿清单不匹配。`);
+    }
+  }
+  for (const field of ["match", "competitionProfile"]) {
+    if (!snapshotManifest?.[field]
+      || contentHash(snapshotManifest[field]) !== contentHash(publishedManifest?.[field])) {
+      throw new Error(`${label} input-snapshot.json 的 manifest.${field} 与外层定稿清单不匹配。`);
+    }
+  }
+}
+
+export async function loadPublishedRun(runDir, { expectedMode } = {}) {
+  if (typeof runDir !== "string" || !runDir.trim()) throw new Error("正式运行目录不能为空。");
+  const runDirectory = resolve(runDir);
+  const manifest = parseJsonArtifact(await readFile(join(runDirectory, "run-manifest.json")), "run-manifest.json");
+  if (!["prematch", "postmatch"].includes(manifest.mode)) {
+    throw new Error("正式运行模式必须是 prematch 或 postmatch。");
+  }
+  const profileValidation = validateCompetitionProfile(manifest.competitionProfile);
+  if (!profileValidation.ok) {
+    throw new Error(`正式运行赛事画像无效：${profileValidation.errors.join("；")}`);
+  }
+  assertMatchOrientation(manifest.match);
+  if (expectedMode && manifest.mode !== expectedMode) {
+    throw new Error(`正式运行模式必须是 ${expectedMode}。`);
+  }
+  if (basename(runDirectory) !== manifest.runId) {
+    throw new Error("运行目录名必须与 manifest.runId 完全一致。");
+  }
+  assertFinalizedAt(manifest);
+  const publication = validatePublishedRun(manifest);
+  if (!publication.ok) throw new Error(`正式运行发布校验失败：${publication.errors.join("；")}`);
+
+  const artifactBytes = {};
+  for (const [artifactName, fileName] of requiredArtifactsFor(manifest)) {
+    const bytes = await readFile(join(runDirectory, fileName));
+    const artifact = manifest.artifacts[artifactName];
+    const actualSha256 = createHash("sha256").update(bytes).digest("hex");
+    if (bytes.byteLength !== artifact.byteLength || actualSha256 !== artifact.sha256) {
+      throw new Error(`${fileName} 的字节数或 SHA-256 与 manifest 不匹配。`);
+    }
+    artifactBytes[artifactName] = bytes;
+  }
+
+  const evidenceEnvelope = parseJsonArtifact(artifactBytes.evidenceLedger, "evidence-ledger.json");
+  const ledger = Array.isArray(evidenceEnvelope) ? evidenceEnvelope : evidenceEnvelope?.ledger;
+  if (!Array.isArray(ledger)
+    || contentHash(evidenceEnvelope?.match ?? manifest.match) !== contentHash(manifest.match)
+    || (evidenceEnvelope?.cutoffAt ?? manifest.dataCutoffAt) !== manifest.dataCutoffAt) {
+    throw new Error("evidence-ledger.json 与运行清单的比赛、截止时间或账本结构不匹配。");
+  }
+  const storedAudit = parseJsonArtifact(artifactBytes.audit, "audit.json");
+  const recalculatedAudit = auditEvidenceLedger({ ledger, match: manifest.match, cutoffAt: manifest.dataCutoffAt });
+  assertEvidenceAuditCompletable(recalculatedAudit);
+  if (contentHash(storedAudit) !== contentHash(recalculatedAudit)) {
+    throw new Error("audit.json 与原始 evidence-ledger.json 的重新审计结果不匹配。");
+  }
+  const auditSummary = manifest.artifacts.audit.metadata?.evidenceAudit;
+  if (!auditSummary || typeof auditSummary !== "object" || contentHash(auditSummary) !== contentHash({
+    status: recalculatedAudit.status,
+    missing: recalculatedAudit.missing,
+    conflicts: recalculatedAudit.conflicts
+  })) {
+    throw new Error("manifest 中的证据审计摘要与 audit.json 不匹配。");
+  }
+
+  return { manifest, runDirectory, artifactBytes, evidenceLedger: ledger, evidenceAudit: recalculatedAudit };
+}
+
+export async function loadVerifiedPostmatchRecord({ postmatchRunDir, prematchRunDir } = {}) {
+  const [postmatchRun, prematchRun] = await Promise.all([
+    loadPublishedRun(postmatchRunDir, { expectedMode: "postmatch" }),
+    loadPublishedRun(prematchRunDir, { expectedMode: "prematch" })
+  ]);
+  const child = postmatchRun.manifest;
+  const parent = prematchRun.manifest;
+  if (child.parentRunId !== parent.runId) {
+    throw new Error("postmatch manifest.parentRunId 与提供的 prematch 运行不匹配。");
+  }
+  if (contentHash(child.match) !== contentHash(parent.match)
+    || contentHash(child.competitionProfile) !== contentHash(parent.competitionProfile)
+    || child.modelVersion !== parent.modelVersion) {
+    throw new Error("postmatch 运行的比赛、赛事画像或模型版本与父 prematch 运行不匹配。");
+  }
+  if (child.artifacts.prediction.sha256 !== parent.artifacts.prediction.sha256
+    || !postmatchRun.artifactBytes.prediction.equals(prematchRun.artifactBytes.prediction)) {
+    throw new Error("postmatch prediction.json 不是父 prematch 预测的原始字节副本。");
+  }
+
+  const inputSnapshot = parseJsonArtifact(postmatchRun.artifactBytes.inputSnapshot, "input-snapshot.json");
+  assertSnapshotManifestBinding(inputSnapshot?.manifest, child, "postmatch");
+  if (inputSnapshot?.parentRun?.runId !== parent.runId
+    || inputSnapshot?.parentRun?.predictionSha256 !== parent.artifacts.prediction.sha256) {
+    throw new Error("postmatch input-snapshot.json 的父运行绑定不匹配。");
+  }
+  const prediction = parseJsonArtifact(prematchRun.artifactBytes.prediction, "prediction.json");
+  const parentInputSnapshot = parseJsonArtifact(prematchRun.artifactBytes.inputSnapshot, "input-snapshot.json");
+  assertSnapshotManifestBinding(parentInputSnapshot?.manifest, parent, "prematch");
+  assertAuditedModelBindings({
+    manifest: parentInputSnapshot.manifest,
+    snapshot: parentInputSnapshot.snapshot,
+    evidenceAudit: prematchRun.evidenceAudit
+  });
+  const recalculatedPrediction = predict90({
+    manifest: parentInputSnapshot.manifest,
+    snapshot: parentInputSnapshot.snapshot,
+    evidenceAudit: prematchRun.evidenceAudit
+  });
+  if (contentHash(prediction) !== contentHash(recalculatedPrediction)) {
+    throw new Error("父 prematch prediction.json 与已审计输入重新计算的预测不匹配。");
+  }
+  const storedRecord = parseJsonArtifact(postmatchRun.artifactBytes.record, "record.json");
+  const postmatch = inputSnapshot?.postmatch;
+  const recalculatedRecord = recordPostmatch({
+    manifest: parent,
+    prediction,
+    facts: {
+      predictionRunId: parent.runId,
+      predictionSha256: parent.artifacts.prediction.sha256,
+      dataCutoffAt: child.dataCutoffAt,
+      evidenceLedger: postmatchRun.evidenceLedger,
+      actualResult: postmatch?.actualResult,
+      comparable: postmatch?.comparable
+    }
+  });
+  if (contentHash(storedRecord) !== contentHash(recalculatedRecord)) {
+    throw new Error("record.json 与父预测、原始赛果证据重新计算的记录不匹配。");
+  }
+
+  const actualResult = postmatch?.actualResult;
+  const reportPostmatch = {
+    ...postmatch,
+    actualResult,
+    prematchBinding: {
+      runId: parent.runId,
+      predictionHash: parent.artifacts.prediction.sha256
+    },
+    noPosthocRewrite: { enforced: true, predictionHashUnchanged: true }
+  };
+  const rebuiltReport = buildPostmatchReport({
+    manifest: child,
+    prediction,
+    evidenceAudit: postmatchRun.evidenceAudit,
+    postmatch: reportPostmatch
+  });
+  if (!postmatchRun.artifactBytes.reportMarkdown.equals(Buffer.from(rebuiltReport.markdown, "utf8"))) {
+    throw new Error("report.md 与已审计赛后运行重新生成的同源报告不匹配。");
+  }
+  if (!postmatchRun.artifactBytes.reportHtml.equals(Buffer.from(rebuiltReport.html, "utf8"))) {
+    throw new Error("report-long.html 与已审计赛后运行重新生成的同源报告不匹配。");
+  }
+
+  return { record: storedRecord, postmatchRun, prematchRun };
 }
 
 export function finalizeManifest(manifest) {
@@ -289,28 +470,14 @@ export async function runPrematchPipeline({ input, outDir } = {}) {
 }
 
 async function loadPublishedPrematchRun(prematchRunDir) {
-  if (typeof prematchRunDir !== "string" || !prematchRunDir.trim()) {
-    throw new Error("postmatch 流水线必须提供 prematchRunDir。");
-  }
-  const runDirectory = resolve(prematchRunDir);
-  const manifest = JSON.parse(await readFile(join(runDirectory, "run-manifest.json"), "utf8"));
-  if (manifest.mode !== "prematch" || !manifest.finalizedAt) {
-    throw new Error("parentRun 必须是已经定稿的 prematch 运行。");
-  }
-  const publication = validatePublishedRun(manifest);
-  if (!publication.ok) throw new Error(`parentRun 发布校验失败：${publication.errors.join("；")}`);
-
-  for (const [artifactName, fileName] of REQUIRED_ARTIFACTS) {
-    const bytes = await readFile(join(runDirectory, fileName));
-    const artifact = manifest.artifacts[artifactName];
-    const actualSha256 = createHash("sha256").update(bytes).digest("hex");
-    if (bytes.byteLength !== artifact.byteLength || actualSha256 !== artifact.sha256) {
-      throw new Error(`parentRun 的 ${fileName} 字节数或 SHA-256 与 manifest 不匹配。`);
-    }
-  }
-
-  const predictionBytes = await readFile(join(runDirectory, "prediction.json"));
-  return { manifest, predictionBytes, prediction: JSON.parse(predictionBytes.toString("utf8")), runDirectory };
+  const published = await loadPublishedRun(prematchRunDir, { expectedMode: "prematch" });
+  const predictionBytes = published.artifactBytes.prediction;
+  return {
+    manifest: published.manifest,
+    predictionBytes,
+    prediction: parseJsonArtifact(predictionBytes, "prediction.json"),
+    runDirectory: published.runDirectory
+  };
 }
 
 export async function runPostmatchPipeline({ prematchRunDir, input, outDir } = {}) {

@@ -34,6 +34,7 @@ description: 面向联赛、国内杯赛、洲际俱乐部赛事、国家队赛�
 - 从 `league`、`domestic_cup`、`continental_club`、`national_tournament`、`friendly` 中选择赛事族。
 - 明确常规时间、加时、点球、两回合和中立场规则。默认预测只覆盖 90 分钟；晋级、加时、点球、角球或市场比较都不是默认输出。
 - 使用可审计的 `baselineVersion`；缺少赛事专用基线时不得静默套用另一赛事基线。
+- `homeAdvantage` 必须是 `[0, 1]` 内的有限增量，中立场必须为 `0`，并与本次接受的同赛事基线 claim 精确同值。
 
 ### 2. 收集并审计证据
 
@@ -72,6 +73,7 @@ description: 面向联赛、国内杯赛、洲际俱乐部赛事、国家队赛�
 
 - 赛果、事件和统计必须以 claim ID、topic、比赛身份及规范化值指纹绑定本次重新审计后接受的证据；不信任调用方自报 accepted。
 - 正式赛后流程从父赛前目录复验全部文件，新建带 `parentRunId` 的 `postmatch` 清单与独立目录；引用原 `predictionRunId` 和预测 SHA-256，保留当时概率，不用实际结果改写旧预测。
+- 校准入口只读取父子运行目录索引，并重新验证内外层 manifest、artifact SHA、父子绑定、父运行入模证据、重算预测、赛果证据审计和重算记录；画像键必须包含实际进球基线与主场优势，不得把可编辑 `record.json` 聚合或自报质量标志直接送入 30 场门槛。
 - 只有至少 **30 场**同赛事画像、赛前已发布且可比较的样本才可形成参数调整提案。
 - 所有提案必须 `requiresHumanApproval: true`、`applyAutomatically: false`；单场结果或不足 30 场时不得调参。
 
@@ -94,9 +96,11 @@ node ./skills/football-prediction-skill-xiaowo/scripts/run-postmatch-pipeline.mj
 
 # 从不可变赛后记录生成待人工审核的校准提案
 node ./skills/football-prediction-skill-xiaowo/scripts/propose-calibration.mjs \
-  --records ./skills/football-prediction-skill-xiaowo/assets/sample-data/postmatch-records.json \
+  --runs ./postmatch-runs.json \
   --out ./.tmp-v3-calibration.json
 ```
+
+`postmatch-runs.json` 的每项必须包含 `postmatchRunDir` 与 `prematchRunDir`。`assets/sample-data/postmatch-records.json` 仅保留为核心纯函数的合成示例，不能作为公开校准 CLI 输入。
 
 ## 原创工程流程图
 

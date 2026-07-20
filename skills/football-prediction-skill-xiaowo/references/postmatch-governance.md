@@ -39,9 +39,19 @@ node scripts/run-postmatch-pipeline.mjs \
   --out-dir <赛后运行根目录>
 ```
 
+公开 `football-xiaowo report` 不接受可编辑 postmatch fixture。复验既有赛后报告时必须同时提供子赛后目录与父赛前目录；命令逐项检查父子清单、九项赛后 artifact、证据重审计和重新计算的记录，重建 Markdown/HTML 并在临时目录重渲染 PNG 做字节比较，只报告验证结果，不生成或覆盖正式文件：
+
+```bash
+football-xiaowo report \
+  --run-dir <赛后运行目录> \
+  --prematch-run-dir <父赛前运行目录>
+```
+
+PNG 复验是重新渲染后的逐字节比较，必须固定 Playwright/Chromium、字体和运行时版本。跨环境差异可能导致保守拒绝，因此正式复验应在发布环境中执行。
+
 ## 可比较样本
 
-`competitionProfileKey` 是对赛事族、赛事、赛季、级别、阶段、基线版本、基线样本窗口、中立/两回合/加时/点球规则的规范化哈希。`proposeCalibration(records)` 以输入中第一个非空画像键为目标，并从记录携带的完整 `competitionProfile` 复算该键，只统计同时满足以下条件的记录：
+`competitionProfileKey` v2 是对赛事族、赛事、赛季、级别、阶段、基线版本、`baseline.goalsPerTeam`、基线样本窗口、`homeAdvantage`、中立/两回合/加时/点球规则的规范化哈希。核心计算函数 `proposeCalibration(records)` 只接受已经由可信运行加载器重新构造的记录；公开 CLI 不接受 records 文件。它以输入中第一个非空画像键为目标，并从记录携带的完整 `competitionProfile` 复算该键，只统计同时满足以下条件的记录：
 
 1. `competitionProfileKey` 与目标完全相同；
 2. `publishedBeforeKickoff === true`；
@@ -74,8 +84,8 @@ Brier = mean(sum((预测概率 - 实际 one-hot)²))
 
 ```bash
 node scripts/propose-calibration.mjs \
-  --records assets/sample-data/postmatch-records.json \
+  --runs <postmatch-runs.json> \
   --out <calibration-proposal.json>
 ```
 
-输入可为记录数组，也可为 `{ "records": [...] }`。输出同样使用独占创建，避免静默覆盖提案。
+`postmatch-runs.json` 可为数组，也可为 `{ "runs": [...] }`；每项只提供 `postmatchRunDir` 和 `prematchRunDir`。相对目录按索引文件所在目录解析。CLI 会逐项复验定稿状态、全部 artifact SHA/字节数、内外层 snapshot manifest、父子绑定、父运行入模证据与重算预测、父预测原始字节、原始 evidence ledger、重算 audit 与重算 record，再把重构记录交给核心计算。索引中的任何记录字段或质量标志均被忽略。输出使用独占创建，避免静默覆盖提案。

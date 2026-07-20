@@ -20,6 +20,7 @@ const profile = {
     sampleWindow: { from: "2025-08-01", to: "2026-05-31", matchCount: 380 },
     evidenceClaimIds: ["baseline-1"]
   },
+  homeAdvantage: 0.12,
   regulation: { extraTime: false, penalties: false, twoLegged: false, neutralVenue: false }
 };
 

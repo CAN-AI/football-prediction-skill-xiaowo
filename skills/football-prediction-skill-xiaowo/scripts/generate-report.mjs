@@ -1,12 +1,14 @@
 #!/usr/bin/env node
 
-import { mkdir, readFile, stat, writeFile } from "node:fs/promises";
-import { resolve } from "node:path";
+import { mkdir, mkdtemp, readFile, rm, stat, writeFile } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { join, resolve } from "node:path";
 import { predict90 } from "../core/model.mjs";
-import { buildPostmatchReport, buildPrematchReport } from "../core/report.mjs";
+import { loadVerifiedPostmatchRecord } from "../core/pipeline.mjs";
+import { buildPrematchReport } from "../core/report.mjs";
 import { assertRendererAvailable, renderLongPng } from "../core/render.mjs";
 
-const USAGE = "用法：node generate-report.mjs --fixture <输入夹具.json> --out-dir <输出目录>";
+const USAGE = "用法：node generate-report.mjs --fixture <赛前夹具.json> --out-dir <输出目录>；或 --run-dir <赛后运行目录> --prematch-run-dir <父赛前运行目录>";
 
 function parseArguments(argumentsList) {
   if (argumentsList.length !== 4) return null;
@@ -14,10 +16,16 @@ function parseArguments(argumentsList) {
   for (let index = 0; index < argumentsList.length; index += 2) {
     const flag = argumentsList[index];
     const value = argumentsList[index + 1];
-    if (!["--fixture", "--out-dir"].includes(flag) || !value || values[flag]) return null;
+    if (!["--fixture", "--out-dir", "--run-dir", "--prematch-run-dir"].includes(flag) || !value || values[flag]) return null;
     values[flag] = value;
   }
-  return values["--fixture"] && values["--out-dir"] ? { fixture: values["--fixture"], outputDirectory: values["--out-dir"] } : null;
+  if (values["--fixture"] && values["--out-dir"] && !values["--run-dir"] && !values["--prematch-run-dir"]) {
+    return { fixture: values["--fixture"], outputDirectory: values["--out-dir"] };
+  }
+  if (values["--run-dir"] && values["--prematch-run-dir"] && !values["--fixture"] && !values["--out-dir"]) {
+    return { runDirectory: values["--run-dir"], prematchRunDirectory: values["--prematch-run-dir"] };
+  }
+  return null;
 }
 
 function reportMode(fixture) {
@@ -29,9 +37,7 @@ function reportMode(fixture) {
 
 function assertPostmatchManifest(fixture, mode) {
   if (mode !== "postmatch") return;
-  if (fixture?.manifest?.mode !== "postmatch" || typeof fixture.manifest.parentRunId !== "string" || !fixture.manifest.parentRunId) {
-    throw new Error("赛后报告只能消费带 parentRunId 的 postmatch manifest；请使用赛后流水线创建运行清单。");
-  }
+  throw new Error("公开报告命令不接受可编辑的 postmatch manifest 夹具；请使用赛后流水线发布，或用 --run-dir 复验已定稿赛后运行清单。");
 }
 
 async function assertOutputsAbsent(paths) {
@@ -55,9 +61,36 @@ function assertAuditPassed(audit) {
   if (failures.length) throw new Error(`渲染审计失败：${failures.join("；")}`);
 }
 
+async function assertPostmatchPngMatches(verified) {
+  const temporaryDirectory = await mkdtemp(join(tmpdir(), "football-postmatch-report-verify-"));
+  try {
+    const outputPath = join(temporaryDirectory, "report-long.png");
+    const auditPath = join(temporaryDirectory, "render-audit.json");
+    const html = verified.postmatchRun.artifactBytes.reportHtml.toString("utf8");
+    await assertRendererAvailable();
+    const audit = await renderLongPng({ html, outputPath, auditPath });
+    assertAuditPassed(audit);
+    const renderedPng = await readFile(outputPath);
+    if (!renderedPng.equals(verified.postmatchRun.artifactBytes.reportPng)) {
+      throw new Error("report-long.png 与已审计 HTML 重新渲染的同源长图不匹配。");
+    }
+  } finally {
+    await rm(temporaryDirectory, { recursive: true, force: true });
+  }
+}
+
 async function main() {
   const options = parseArguments(process.argv.slice(2));
   if (!options) throw new Error(USAGE);
+  if (options.runDirectory) {
+    const verified = await loadVerifiedPostmatchRecord({
+      postmatchRunDir: options.runDirectory,
+      prematchRunDir: options.prematchRunDirectory
+    });
+    await assertPostmatchPngMatches(verified);
+    console.log(`赛后报告复验通过：${resolve(verified.postmatchRun.runDirectory, "report.md")}`);
+    return;
+  }
 
   const fixturePath = resolve(options.fixture);
   const outputDirectory = resolve(options.outputDirectory);
@@ -70,8 +103,7 @@ async function main() {
     evidenceAudit: fixture.evidenceAudit
   });
   const reportInput = { ...fixture, prediction };
-  const build = mode === "postmatch" ? buildPostmatchReport : buildPrematchReport;
-  const report = build(reportInput);
+  const report = buildPrematchReport(reportInput);
 
   await mkdir(outputDirectory, { recursive: true });
   const markdownPath = resolve(outputDirectory, "report.md");

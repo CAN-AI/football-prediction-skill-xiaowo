@@ -36,6 +36,7 @@ function publishedManifest() {
         sampleWindow: { from: "2025-08-01", to: "2026-05-31", matchCount: 380 },
         evidenceClaimIds: ["baseline-1"]
       },
+      homeAdvantage: 0.12,
       regulation: { twoLegged: false, extraTime: false, penalties: false, neutralVenue: false }
     },
     artifacts: { prediction: { path: "prediction.json", sha256: PREDICTION_SHA256, byteLength: 1 } }
@@ -388,7 +389,7 @@ test("record-result CLI 拒绝内容改写但沿用旧哈希的 prediction 文�
   }
 });
 
-test("propose-calibration CLI 写出不可自动应用的提案", async () => {
+test("propose-calibration CLI 拒绝可编辑 records 聚合文件", async () => {
   const directory = await mkdtemp(join(tmpdir(), "football-calibration-proposal-"));
   const recordsPath = join(directory, "records.json");
   const outputPath = join(directory, "proposal.json");
@@ -400,12 +401,11 @@ test("propose-calibration CLI 写出不可自动应用的提案", async () => {
   await writeFile(recordsPath, JSON.stringify(records), "utf8");
 
   try {
-    await execFileAsync(process.execPath, [scriptPath, "--records", recordsPath, "--out", outputPath]);
-    const proposal = JSON.parse(await readFile(outputPath, "utf8"));
-    assert.equal(proposal.comparableSampleCount, 29);
-    assert.equal(proposal.eligibility, "insufficient_sample");
-    assert.equal(proposal.applyAutomatically, false);
-    assert.deepEqual(proposal.proposedChanges, []);
+    await assert.rejects(
+      execFileAsync(process.execPath, [scriptPath, "--records", recordsPath, "--out", outputPath]),
+      (error) => error.code === 1 && /run|运行目录|不可变/.test(error.stderr)
+    );
+    await assert.rejects(readFile(outputPath));
   } finally {
     await rm(directory, { recursive: true, force: true });
   }

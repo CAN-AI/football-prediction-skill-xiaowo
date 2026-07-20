@@ -82,6 +82,14 @@ export function validateCompetitionProfile(profile) {
   if (!profile?.season) errors.push("赛事画像 season 赛季不能为空。");
   if (!profile?.level) errors.push("赛事画像 level 级别不能为空。");
   if (!profile?.baselineVersion) errors.push("基线版本不能为空。");
+  if (!Number.isFinite(profile?.homeAdvantage)
+    || profile.homeAdvantage < 0
+    || profile.homeAdvantage > 1) {
+    errors.push("赛事画像 homeAdvantage 主场预期进球增量必须是 0 到 1 之间的有限数值。");
+  }
+  if (regulation.neutralVenue === true && profile?.homeAdvantage !== 0) {
+    errors.push("中立场的 homeAdvantage 必须为零。");
+  }
   if (!Number.isFinite(baseline.goalsPerTeam) || baseline.goalsPerTeam <= 0) {
     errors.push("赛事画像 baseline.goalsPerTeam 进球基线必须是正数。");
   }

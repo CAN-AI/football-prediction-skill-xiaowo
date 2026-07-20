@@ -45,6 +45,7 @@
       "reviewStatus": "accepted",
       "value": {
         "goalsPerTeam": 1.55,
+        "homeAdvantage": 0.12,
         "sampleWindow": { "from": "2025-08-01", "to": "2026-05-31", "matchCount": 380 }
       }
     },

@@ -6,10 +6,11 @@
       "competitionProfile": {
         "family": "league", "competitionId": "ENG-PL", "season": "2026-27", "level": "senior_professional", "stage": "regular_season",
         "baselineVersion": "eng-pl-2026-27-r1",
-        "baseline": { "sampleWindow": { "from": "2025-08-01", "to": "2026-05-31", "matchCount": 380 } },
+        "baseline": { "goalsPerTeam": 1.55, "sampleWindow": { "from": "2025-08-01", "to": "2026-05-31", "matchCount": 380 } },
+        "homeAdvantage": 0.12,
         "regulation": { "twoLegged": false, "extraTime": false, "penalties": false, "neutralVenue": false }
       },
-      "competitionProfileKey": "profile-v1:33980392b78185f2381abc17bab0f86b26bd5fff692f5327119b46a5e6fe6a59",
+      "competitionProfileKey": "profile-v2:d6072dd23e17412765994edd61e6116ce2e68328f6bcd42f06e2d1d5b590869d",
       "matchId": "sample-match-001",
       "publishedBeforeKickoff": true,
       "comparable": true,
@@ -31,10 +32,11 @@
       "competitionProfile": {
         "family": "league", "competitionId": "ENG-PL", "season": "2026-27", "level": "senior_professional", "stage": "regular_season",
         "baselineVersion": "eng-pl-2026-27-r1",
-        "baseline": { "sampleWindow": { "from": "2025-08-01", "to": "2026-05-31", "matchCount": 380 } },
+        "baseline": { "goalsPerTeam": 1.55, "sampleWindow": { "from": "2025-08-01", "to": "2026-05-31", "matchCount": 380 } },
+        "homeAdvantage": 0.12,
         "regulation": { "twoLegged": false, "extraTime": false, "penalties": false, "neutralVenue": false }
       },
-      "competitionProfileKey": "profile-v1:33980392b78185f2381abc17bab0f86b26bd5fff692f5327119b46a5e6fe6a59",
+      "competitionProfileKey": "profile-v2:d6072dd23e17412765994edd61e6116ce2e68328f6bcd42f06e2d1d5b590869d",
       "matchId": "sample-match-002",
       "publishedBeforeKickoff": true,
       "comparable": true,
@@ -56,10 +58,11 @@
       "competitionProfile": {
         "family": "league", "competitionId": "ENG-PL", "season": "2026-27", "level": "senior_professional", "stage": "regular_season",
         "baselineVersion": "eng-pl-2026-27-r1",
-        "baseline": { "sampleWindow": { "from": "2025-08-01", "to": "2026-05-31", "matchCount": 380 } },
+        "baseline": { "goalsPerTeam": 1.55, "sampleWindow": { "from": "2025-08-01", "to": "2026-05-31", "matchCount": 380 } },
+        "homeAdvantage": 0.12,
         "regulation": { "twoLegged": false, "extraTime": false, "penalties": false, "neutralVenue": false }
       },
-      "competitionProfileKey": "profile-v1:33980392b78185f2381abc17bab0f86b26bd5fff692f5327119b46a5e6fe6a59",
+      "competitionProfileKey": "profile-v2:d6072dd23e17412765994edd61e6116ce2e68328f6bcd42f06e2d1d5b590869d",
       "matchId": "sample-match-003",
       "publishedBeforeKickoff": true,
       "comparable": true,

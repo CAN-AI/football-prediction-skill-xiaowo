@@ -108,7 +108,7 @@ export function predict90({ manifest, snapshot, evidenceAudit } = {}) {
   }
 
   const { homeTeamId, awayTeamId, home, away } = resolveTeams(manifest, snapshot);
-  const homeAdvantage = manifest.competitionProfile.homeAdvantage ?? 0;
+  const homeAdvantage = manifest.competitionProfile.homeAdvantage;
   assertFiniteNumber(homeAdvantage, "主场系数");
   const ratingShift = (home.rating - away.rating) / 900;
   const adjustments = acceptedDeterministicAdjustments(evidenceAudit);

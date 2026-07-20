@@ -20,6 +20,6 @@
 
 `lineup` 主题只有 `lineupStatus: "confirmed"` 或 `"official_confirmed"` 才能入模。候选首发、传闻首发和未确认名单一律留在拒绝记录中。
 
-同一 `topic` 与 `subject` 内，只要 `metricDefinitionVersion` 或 `eventFeedId` 不同（包括一个缺失、另一个已声明），所有相关值都必须隔离到 `conflicts`，不得合并、平均或择一入模。此规则不是“数值冲突时自动选择更权威来源”的替代方案；审计会保留冲突值和 claim ID 以便人工复核。只有未来在人工决议理由已被结构化记录时，才可扩展为放行单条证据；本版本不实现该扩展。
+同一 `topic` 与 `subject` 内，只要 `metricDefinitionVersion` 或 `eventFeedId` 不同（包括一个缺失、另一个已声明），所有相关值都必须隔离到 `conflicts`，不得合并、平均或择一入模。冲突组先从全部结构可识别的账本条目建立，不受来源、审核或截断时间的拒绝结果影响；因此同组的所有条目都不可进入模型，但每条原有拒绝理由仍须保留。此规则不是“数值冲突时自动选择更权威来源”的替代方案；审计会保留冲突值和 claim ID 以便人工复核。只有未来在人工决议理由已被结构化记录时，才可扩展为放行单条证据；本版本不实现该扩展。
 
 以下字段缺失会原样出现在 `missing`：`match.homeTeamId`、`match.awayTeamId`、`match.kickoffAt`、`cutoffAt`，以及每条证据的 `claimId`、`topic`、`subject`、`sourceTier`、`sourceUrl`、`publishedAt`、`observedAt`、`affectsModel`、`reviewStatus`。缺失、拒绝或冲突时返回 `degraded_low_confidence` 与低置信度；账本或截断时间无法解析时返回 `failed`。其余无异常的账本返回 `passed` 与高置信度。

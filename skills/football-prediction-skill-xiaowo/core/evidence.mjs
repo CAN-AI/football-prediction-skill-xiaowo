@@ -86,9 +86,16 @@ function rejectionReasons(claim, cutoffAt) {
   return reasons;
 }
 
-function buildConflicts(accepted) {
+function isStructurallyRecognizable(claim) {
+  return claim !== null
+    && typeof claim === "object"
+    && isPresent(claim.topic)
+    && isPresent(claim.subject);
+}
+
+function buildConflicts(ledgerClaims) {
   const groups = new Map();
-  for (const claim of accepted) {
+  for (const claim of ledgerClaims) {
     const key = `${claim.topic}\u0000${claim.subject}`;
     const group = groups.get(key) ?? [];
     group.push(claim);
@@ -96,21 +103,21 @@ function buildConflicts(accepted) {
   }
 
   const conflicts = [];
-  const conflictClaimIds = new Set();
+  const conflictClaims = new Set();
   for (const claims of groups.values()) {
-    const metricDefinitionVersions = [...new Set(claims.map((claim) => claim.metricDefinitionVersion))];
-    const eventFeedIds = [...new Set(claims.map((claim) => claim.eventFeedId))];
+    const metricDefinitionVersions = [...new Set(claims.map((claim) => claim.metricDefinitionVersion ?? null))];
+    const eventFeedIds = [...new Set(claims.map((claim) => claim.eventFeedId ?? null))];
     const hasMetricConflict = metricDefinitionVersions.length > 1;
     const hasFeedConflict = eventFeedIds.length > 1;
     if (!hasMetricConflict && !hasFeedConflict) continue;
 
-    for (const claim of claims) conflictClaimIds.add(claim.claimId);
+    for (const claim of claims) conflictClaims.add(claim);
     conflicts.push({
       topic: claims[0].topic,
       subject: claims[0].subject,
       claimIds: claims.map((claim) => claim.claimId),
-      metricDefinitionVersions: metricDefinitionVersions.filter(isPresent),
-      eventFeedIds: eventFeedIds.filter(isPresent),
+      metricDefinitionVersions,
+      eventFeedIds,
       values: claims.map((claim) => ({
         claimId: claim.claimId,
         value: claim.value,
@@ -120,7 +127,7 @@ function buildConflicts(accepted) {
     });
   }
 
-  return { conflicts, conflictClaimIds };
+  return { conflicts, conflictClaims };
 }
 
 function confidenceFor({ status, accepted, rejected, missing, conflicts }) {
@@ -151,24 +158,17 @@ export function auditEvidenceLedger({ ledger, match, cutoffAt } = {}) {
     return { status, accepted, rejected, missing, conflicts, dataConfidence: confidenceFor({ status, accepted, rejected, missing, conflicts }) };
   }
 
-  const rejected = [];
-  const candidates = [];
-  ledger.forEach((claim, index) => {
-    const reasons = rejectionReasons(claim ?? {}, cutoffAt);
-    if (reasons.length) {
-      rejected.push({ claim, reasons });
-    } else {
-      candidates.push(claim);
-    }
-  });
-
-  const { conflicts, conflictClaimIds } = buildConflicts(candidates);
-  const accepted = candidates.filter((claim) => !conflictClaimIds.has(claim.claimId));
-  for (const claim of candidates) {
-    if (conflictClaimIds.has(claim.claimId)) {
-      rejected.push({ claim, reasons: ["与同主题同主体的口径或事件源冲突，已隔离"] });
+  const assessments = ledger.map((claim) => ({ claim, reasons: rejectionReasons(claim ?? {}, cutoffAt) }));
+  const { conflicts, conflictClaims } = buildConflicts(ledger.filter(isStructurallyRecognizable));
+  for (const assessment of assessments) {
+    if (conflictClaims.has(assessment.claim)) {
+      assessment.reasons.push("与同主题同主体的口径或事件源冲突，已隔离");
     }
   }
+  const accepted = assessments.filter(({ reasons }) => reasons.length === 0).map(({ claim }) => claim);
+  const rejected = assessments
+    .filter(({ reasons }) => reasons.length > 0)
+    .map(({ claim, reasons }) => ({ claim, reasons }));
 
   const status = missing.length || rejected.length || conflicts.length ? "degraded_low_confidence" : "passed";
   return { status, accepted, rejected, missing, conflicts, dataConfidence: confidenceFor({ status, accepted, rejected, missing, conflicts }) };

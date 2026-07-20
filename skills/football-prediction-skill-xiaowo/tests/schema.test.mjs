@@ -1,8 +1,10 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import {
+  appendArtifact,
   assertMatchOrientation,
   createRunManifest,
+  finalizeRunManifest,
   validateCompetitionProfile
 } from "../core/schema.mjs";
 import { contentHash } from "../core/utils.mjs";
@@ -90,4 +92,61 @@ test("主客队必须完整且不同", () => {
 
 test("内容哈希不受对象键顺序影响", () => {
   assert.equal(contentHash({ b: 2, a: 1 }), contentHash({ a: 1, b: 2 }));
+});
+
+test("产物台账冻结并拒绝直接写入", () => {
+  const manifest = createRunManifest({
+    mode: "prematch",
+    dataCutoffAt: "2026-08-01T10:00:00Z",
+    competitionProfile: profile,
+    match
+  });
+
+  assert.equal(Object.isFrozen(manifest), true);
+  assert.equal(Object.isFrozen(manifest.artifacts), true);
+  assert.throws(
+    () => { manifest.artifacts = {}; },
+    /运行清单不可直接修改/
+  );
+  assert.throws(
+    () => { manifest.artifacts.prediction = { path: "prediction.json", sha256: "a".repeat(64) }; },
+    /产物台账不可直接修改/
+  );
+});
+
+test("产物只能追加一次且合法追加不改写原清单", () => {
+  const manifest = createRunManifest({
+    mode: "prematch",
+    dataCutoffAt: "2026-08-01T10:00:00Z",
+    competitionProfile: profile,
+    match
+  });
+  const artifact = { path: "prediction.json", sha256: "a".repeat(64) };
+  const appended = appendArtifact(manifest, "prediction", artifact);
+
+  assert.equal(manifest.artifacts.prediction, null);
+  assert.deepEqual(appended.artifacts.prediction, artifact);
+  assert.equal(Object.isFrozen(appended), true);
+  assert.throws(() => appendArtifact(appended, "prediction", artifact), /已经登记/);
+  assert.throws(
+    () => appendArtifact(manifest, "prediction", { path: "prediction.json", sha256: "错误哈希" }),
+    /64 位/
+  );
+});
+
+test("定稿后的清单拒绝继续追加产物", () => {
+  const manifest = createRunManifest({
+    mode: "prematch",
+    dataCutoffAt: "2026-08-01T10:00:00Z",
+    competitionProfile: profile,
+    match
+  });
+  const finalized = finalizeRunManifest(manifest);
+
+  assert.match(finalized.finalizedAt, /T/);
+  assert.equal(Object.isFrozen(finalized), true);
+  assert.throws(
+    () => appendArtifact(finalized, "prediction", { path: "prediction.json", sha256: "a".repeat(64) }),
+    /已经定稿/
+  );
 });

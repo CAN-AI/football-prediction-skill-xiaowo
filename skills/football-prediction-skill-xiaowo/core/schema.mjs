@@ -12,6 +12,44 @@ const EMPTY_ARTIFACTS = Object.freeze({
   renderAudit: null
 });
 
+const ARTIFACT_NAMES = Object.freeze(Object.keys(EMPTY_ARTIFACTS));
+
+function createFrozenArtifacts(artifacts = EMPTY_ARTIFACTS) {
+  const target = {};
+  for (const name of ARTIFACT_NAMES) {
+    const artifact = artifacts[name];
+    target[name] = artifact === null ? null : Object.freeze({ ...artifact });
+  }
+  Object.freeze(target);
+
+  return new Proxy(target, {
+    set() {
+      throw new Error("产物台账不可直接修改，请使用 appendArtifact。");
+    }
+  });
+}
+
+function freezeManifest(manifest) {
+  const target = Object.freeze({
+    ...manifest,
+    artifacts: createFrozenArtifacts(manifest.artifacts)
+  });
+  return new Proxy(target, {
+    set() {
+      throw new Error("运行清单不可直接修改，请创建新的运行清单。");
+    }
+  });
+}
+
+function assertArtifact(artifact) {
+  if (!artifact || typeof artifact !== "object" || typeof artifact.path !== "string" || !artifact.path.trim()) {
+    throw new Error("产物必须包含非空路径。");
+  }
+  if (typeof artifact.sha256 !== "string" || !/^[a-f0-9]{64}$/i.test(artifact.sha256)) {
+    throw new Error("产物哈希必须是 64 位 SHA-256 十六进制字符串。");
+  }
+}
+
 export function validateCompetitionProfile(profile) {
   const regulation = profile?.regulation ?? {};
   const errors = [];
@@ -44,7 +82,7 @@ export function createRunManifest(input) {
   const runId = input.runId ?? randomUUID();
   if (input.parentRunId === runId) throw new Error("父运行不能关联自身。");
 
-  return {
+  return freezeManifest({
     runId,
     skillVersion: input.skillVersion ?? V3_SKILL_VERSION,
     modelVersion: input.modelVersion ?? null,
@@ -54,6 +92,33 @@ export function createRunManifest(input) {
     competitionProfile: input.competitionProfile,
     match: assertMatchOrientation(input.match),
     artifacts: { ...EMPTY_ARTIFACTS },
-    parentRunId: input.parentRunId ?? null
-  };
+    parentRunId: input.parentRunId ?? null,
+    finalizedAt: null
+  });
+}
+
+export function appendArtifact(manifest, artifactName, artifact) {
+  if (!ARTIFACT_NAMES.includes(artifactName)) {
+    throw new Error("产物名称不受支持。");
+  }
+  if (manifest?.finalizedAt) {
+    throw new Error("运行清单已经定稿，不能继续追加产物。");
+  }
+  if (manifest?.artifacts?.[artifactName] !== null) {
+    throw new Error("该产物已经登记，不能重复追加。");
+  }
+  assertArtifact(artifact);
+
+  return freezeManifest({
+    ...manifest,
+    artifacts: { ...manifest.artifacts, [artifactName]: artifact }
+  });
+}
+
+export function finalizeRunManifest(manifest) {
+  if (manifest?.finalizedAt) {
+    throw new Error("运行清单已经定稿。");
+  }
+
+  return freezeManifest({ ...manifest, finalizedAt: new Date().toISOString() });
 }

@@ -17,7 +17,7 @@
 
 ## 产物台账
 
-新建运行清单时，下列字段均为 `null`：
+`createRunManifest` 返回冻结的根清单和冻结的 `artifacts` 映射。新建运行清单时，下列字段均为 `null`：
 
 - `evidenceLedger`
 - `audit`
@@ -28,7 +28,9 @@
 - `reportPng`
 - `renderAudit`
 
-产物生成后，只能在清单定稿前将对应字段从 `null` 追加为 `{ "path": "相对路径", "sha256": "64 位十六进制 SHA-256" }`。不得替换已写入的哈希，定稿后的清单不得修改。
+产物生成后，只能通过 `appendArtifact(manifest, artifactName, artifact)` 在清单定稿前将已知槽位从 `null` 追加为 `{ "path": "相对路径", "sha256": "64 位十六进制 SHA-256" }`。该函数返回新的冻结清单，不改写输入清单；同名产物不得重复登记。直接写入 `artifacts` 会被拒绝。
+
+`finalizeRunManifest(manifest)` 返回带有非空 `finalizedAt` 的新冻结清单。它只锁定台账，不验证所有必需产物；完整发布校验由流水线负责。定稿后的清单不得追加产物。
 
 ## 内容哈希
 

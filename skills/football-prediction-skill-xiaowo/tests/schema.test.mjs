@@ -13,8 +13,14 @@ const profile = {
   family: "league",
   competitionId: "ENG-PL",
   season: "2026-27",
+  level: "senior_professional",
   baselineVersion: "pl-26-27-r1",
-  regulation: { extraTime: false, penalties: false, twoLegged: false }
+  baseline: {
+    goalsPerTeam: 1.55,
+    sampleWindow: { from: "2025-08-01", to: "2026-05-31", matchCount: 380 },
+    evidenceClaimIds: ["baseline-1"]
+  },
+  regulation: { extraTime: false, penalties: false, twoLegged: false, neutralVenue: false }
 };
 
 const match = {
@@ -29,7 +35,7 @@ test("赛事画像接受联赛并拒绝无效两回合规则", () => {
   const invalid = {
     ...profile,
     family: "domestic_cup",
-    regulation: { extraTime: false, penalties: false, twoLegged: true }
+    regulation: { extraTime: false, penalties: false, twoLegged: true, neutralVenue: false }
   };
 
   assert.equal(validateCompetitionProfile(invalid).ok, false);
@@ -121,7 +127,7 @@ test("产物只能追加一次且合法追加不改写原清单", () => {
     competitionProfile: profile,
     match
   });
-  const artifact = { path: "prediction.json", sha256: "a".repeat(64) };
+  const artifact = { path: "prediction.json", sha256: "a".repeat(64), byteLength: 1 };
   const appended = appendArtifact(manifest, "prediction", artifact);
 
   assert.equal(manifest.artifacts.prediction, null);
@@ -129,7 +135,7 @@ test("产物只能追加一次且合法追加不改写原清单", () => {
   assert.equal(Object.isFrozen(appended), true);
   assert.throws(() => appendArtifact(appended, "prediction", artifact), /已经登记/);
   assert.throws(
-    () => appendArtifact(manifest, "prediction", { path: "prediction.json", sha256: "错误哈希" }),
+    () => appendArtifact(manifest, "prediction", { path: "prediction.json", sha256: "错误哈希", byteLength: 1 }),
     /64 位/
   );
 });
@@ -146,7 +152,7 @@ test("定稿后的清单拒绝继续追加产物", () => {
   assert.match(finalized.finalizedAt, /T/);
   assert.equal(Object.isFrozen(finalized), true);
   assert.throws(
-    () => appendArtifact(finalized, "prediction", { path: "prediction.json", sha256: "a".repeat(64) }),
+    () => appendArtifact(finalized, "prediction", { path: "prediction.json", sha256: "a".repeat(64), byteLength: 1 }),
     /已经定稿/
   );
 });
@@ -154,7 +160,7 @@ test("定稿后的清单拒绝继续追加产物", () => {
 test("创建清单深克隆并冻结比赛和赛事画像", () => {
   const sourceProfile = {
     ...profile,
-    baseline: { expectedGoals: 2.4 },
+    baseline: { ...profile.baseline, expectedGoals: 2.4 },
     regulation: { ...profile.regulation }
   };
   const sourceMatch = { ...match };
@@ -186,6 +192,7 @@ test("追加和定稿深克隆清单及产物内容", () => {
   const artifact = {
     path: "prediction.json",
     sha256: "a".repeat(64),
+    byteLength: 1,
     metadata: { producer: "test" }
   };
   const appended = appendArtifact(manifest, "prediction", artifact);

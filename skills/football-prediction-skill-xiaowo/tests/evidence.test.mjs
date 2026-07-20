@@ -202,7 +202,7 @@ test("缺失必填事实时列出精确字段名并降级", () => {
   });
 
   assert.equal(audit.status, "degraded_low_confidence");
-  assert.deepEqual(audit.missing, ["match.awayTeamId", "ledger.schedule-1.sourceUrl"]);
+  assert.deepEqual(audit.missing, ["match.awayTeamId", "ledger.schedule-1.sourceUrl", "ledger.acceptedEvidence"]);
   assert.equal(audit.dataConfidence.level, "low");
 });
 

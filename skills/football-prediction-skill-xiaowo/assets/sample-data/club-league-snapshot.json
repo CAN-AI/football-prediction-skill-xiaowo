@@ -4,24 +4,81 @@
       "family": "league",
       "competitionId": "ENG-PL",
       "season": "2026-27",
+      "level": "senior_professional",
+      "stage": "regular_season",
       "baselineVersion": "eng-pl-2026-27-r1",
-      "baseline": { "goalsPerTeam": 1.55 },
+      "baseline": {
+        "goalsPerTeam": 1.55,
+        "sampleWindow": { "from": "2025-08-01", "to": "2026-05-31", "matchCount": 380 },
+        "evidenceClaimIds": ["eng-pl-baseline-2026-27"]
+      },
       "homeAdvantage": 0.12,
-      "regulation": { "extraTime": false, "penalties": false, "twoLegged": false }
+      "regulation": { "extraTime": false, "penalties": false, "twoLegged": false, "neutralVenue": false }
     },
     "match": {
       "matchId": "ARS-CHE-2026-08-01",
       "homeTeamId": "ARS",
       "awayTeamId": "CHE",
       "kickoffAt": "2026-08-01T15:00:00Z"
-    }
+    },
+    "dataCutoffAt": "2026-08-01T10:00:00Z"
   },
   "snapshot": {
     "teams": {
-      "ARS": { "rating": 1900, "attack": 1.2, "defense": 0.9 },
-      "CHE": { "rating": 1850, "attack": 1.1, "defense": 1.0 }
+      "ARS": { "rating": 1900, "attack": 1.2, "defense": 0.9, "evidenceClaimId": "ars-strength-2026-08-01" },
+      "CHE": { "rating": 1850, "attack": 1.1, "defense": 1.0, "evidenceClaimId": "che-strength-2026-08-01" }
     }
   },
+  "evidenceLedger": [
+    {
+      "claimId": "eng-pl-baseline-2026-27",
+      "topic": "baseline",
+      "subject": "ENG-PL:2026-27",
+      "sourceTier": "competition_official",
+      "sourceUrl": "https://example.invalid/eng-pl/2026-27/baseline",
+      "publishedAt": "2026-07-01T09:00:00Z",
+      "observedAt": "2026-08-01T09:00:00Z",
+      "validUntil": "2027-06-30T23:59:59Z",
+      "metricDefinitionVersion": "eng-pl-2026-27-r1",
+      "eventFeedId": "eng-pl-official-2026-27",
+      "affectsModel": true,
+      "reviewStatus": "accepted",
+      "value": {
+        "goalsPerTeam": 1.55,
+        "sampleWindow": { "from": "2025-08-01", "to": "2026-05-31", "matchCount": 380 }
+      }
+    },
+    {
+      "claimId": "ars-strength-2026-08-01",
+      "topic": "statistics",
+      "subject": "ARS",
+      "sourceTier": "data_provider",
+      "sourceUrl": "https://example.invalid/data/ars",
+      "publishedAt": "2026-08-01T08:00:00Z",
+      "observedAt": "2026-08-01T09:05:00Z",
+      "validUntil": "2026-08-01T15:00:00Z",
+      "metricDefinitionVersion": "team-strength-v1",
+      "eventFeedId": "provider-team-strength-2026",
+      "affectsModel": true,
+      "reviewStatus": "accepted",
+      "value": { "rating": 1900, "attack": 1.2, "defense": 0.9 }
+    },
+    {
+      "claimId": "che-strength-2026-08-01",
+      "topic": "statistics",
+      "subject": "CHE",
+      "sourceTier": "data_provider",
+      "sourceUrl": "https://example.invalid/data/che",
+      "publishedAt": "2026-08-01T08:00:00Z",
+      "observedAt": "2026-08-01T09:06:00Z",
+      "validUntil": "2026-08-01T15:00:00Z",
+      "metricDefinitionVersion": "team-strength-v1",
+      "eventFeedId": "provider-team-strength-2026",
+      "affectsModel": true,
+      "reviewStatus": "accepted",
+      "value": { "rating": 1850, "attack": 1.1, "defense": 1.0 }
+    }
+  ],
   "evidenceAudit": {
     "status": "passed",
     "dataConfidence": { "level": "high" },

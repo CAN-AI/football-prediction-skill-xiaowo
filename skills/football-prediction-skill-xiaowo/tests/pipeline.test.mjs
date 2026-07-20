@@ -22,20 +22,23 @@ const CLEAN_RENDER_METADATA = Object.freeze({
 });
 
 function completeManifest(overrides = {}) {
+  const artifact = (path) => ({ path, sha256: SHA256, byteLength: 1 });
   return {
     artifacts: {
-      inputSnapshot: { path: "input-snapshot.json", sha256: SHA256 },
-      prediction: { path: "prediction.json", sha256: SHA256 },
-      reportMarkdown: { path: "report.md", sha256: SHA256 },
-      reportHtml: { path: "report-long.html", sha256: SHA256 },
-      reportPng: { path: "report-long.png", sha256: SHA256 },
-      renderAudit: { path: "render-audit.json", sha256: SHA256, metadata: CLEAN_RENDER_METADATA },
+      evidenceLedger: artifact("evidence-ledger.json"),
+      audit: { ...artifact("audit.json"), metadata: { evidenceAudit: { status: "passed", missing: [], conflicts: [] } } },
+      inputSnapshot: artifact("input-snapshot.json"),
+      prediction: artifact("prediction.json"),
+      reportMarkdown: artifact("report.md"),
+      reportHtml: artifact("report-long.html"),
+      reportPng: artifact("report-long.png"),
+      renderAudit: { ...artifact("render-audit.json"), metadata: CLEAN_RENDER_METADATA },
       ...overrides
     }
   };
 }
 
-test("发布验证要求六个产物使用固定相对文件名", () => {
+test("发布验证要求八个产物使用固定相对文件名", () => {
   const invalidPaths = [
     ["reportMarkdown", "C:\\outside\\report.md"],
     ["reportPng", "..\\outside.png"],
@@ -51,7 +54,7 @@ test("发布验证要求六个产物使用固定相对文件名", () => {
   }
 });
 
-test("发布验证要求六个产物各自带有效 SHA-256", () => {
+test("发布验证要求八个产物各自带有效 SHA-256 和字节数", () => {
   for (const artifactName of Object.keys(completeManifest().artifacts)) {
     const manifest = completeManifest();
     manifest.artifacts[artifactName] = { ...manifest.artifacts[artifactName], sha256: "short" };
@@ -69,6 +72,7 @@ test("发布运行必须同时拥有 Markdown、PNG 和干净的渲染审计", (
     renderAudit: {
       path: "render-audit.json",
       sha256: SHA256,
+      byteLength: 1,
       metadata: { ...CLEAN_RENDER_METADATA, horizontalOverflow: true }
     }
   });
@@ -94,7 +98,7 @@ test("发布验证拒绝缺失或未通过的 renderAudit metadata", () => {
   ];
 
   for (const metadata of invalidMetadata) {
-    const renderAudit = { path: "render-audit.json", sha256: SHA256, ...(metadata ? { metadata } : {}) };
+    const renderAudit = { path: "render-audit.json", sha256: SHA256, byteLength: 1, ...(metadata ? { metadata } : {}) };
     assert.equal(validatePublishedRun(completeManifest({ renderAudit })).ok, false);
   }
 });
@@ -109,7 +113,7 @@ test("发布验证拒绝 metadata 中缺失或不洁的渲染标志", () => {
   ];
 
   for (const metadata of invalidMetadata) {
-    const renderAudit = { path: "render-audit.json", sha256: SHA256, metadata };
+    const renderAudit = { path: "render-audit.json", sha256: SHA256, byteLength: 1, metadata };
     assert.equal(validatePublishedRun(completeManifest({ renderAudit })).ok, false);
   }
 });
@@ -119,7 +123,7 @@ test("发布验证要求 renderAudit metadata.errors 是空数组", () => {
     const metadata = { ...CLEAN_RENDER_METADATA, errors };
     if (errors === undefined) delete metadata.errors;
     const manifest = completeManifest({
-      renderAudit: { path: "render-audit.json", sha256: SHA256, metadata }
+      renderAudit: { path: "render-audit.json", sha256: SHA256, byteLength: 1, metadata }
     });
 
     assert.equal(validatePublishedRun(manifest).ok, false);
@@ -128,12 +132,7 @@ test("发布验证要求 renderAudit metadata.errors 是空数组", () => {
 });
 
 test("正式运行拒绝缺失长图哈希", () => {
-  const manifest = {
-    artifacts: {
-      reportMarkdown: { path: "report.md", sha256: "abc" },
-      reportPng: null
-    }
-  };
+  const manifest = completeManifest({ reportPng: null });
 
   assert.throws(() => finalizeManifest(manifest), /report-long\.png/);
 });
@@ -145,7 +144,7 @@ test("正式运行拒绝缺失任一必需产物", () => {
 });
 
 test("正式运行拒绝无效的产物 SHA-256", () => {
-  const manifest = completeManifest({ prediction: { path: "prediction.json", sha256: "abc" } });
+  const manifest = completeManifest({ prediction: { path: "prediction.json", sha256: "abc", byteLength: 1 } });
 
   assert.throws(() => finalizeManifest(manifest), /prediction\.json.*SHA-256/);
 });
@@ -162,6 +161,7 @@ test("正式运行拒绝带错误的渲染审计", () => {
     renderAudit: {
       path: "render-audit.json",
       sha256: SHA256,
+      byteLength: 1,
       metadata: { passed: false, errors: ["存在水平溢出"] }
     }
   });
@@ -174,6 +174,7 @@ test("实际定稿路径调用发布验证并拒绝不洁 renderAudit metadata",
     renderAudit: {
       path: "render-audit.json",
       sha256: SHA256,
+      byteLength: 1,
       metadata: { ...CLEAN_RENDER_METADATA, horizontalOverflow: true }
     }
   });
@@ -193,13 +194,14 @@ test("赛前流水线按固定顺序生成可哈希的完整运行目录", async
   try {
     const result = await runPrematchPipeline({ input: inputPath, outDir: outputRoot });
     const manifest = JSON.parse(await readFile(join(result.runDirectory, "run-manifest.json"), "utf8"));
-    const required = ["inputSnapshot", "prediction", "reportMarkdown", "reportHtml", "reportPng", "renderAudit"];
+    const required = ["evidenceLedger", "audit", "inputSnapshot", "prediction", "reportMarkdown", "reportHtml", "reportPng", "renderAudit"];
 
     assert.equal(manifest.finalizedAt !== null, true);
     for (const name of required) {
       const artifact = manifest.artifacts[name];
       const contents = await readFile(join(result.runDirectory, artifact.path));
       assert.equal(createHash("sha256").update(contents).digest("hex"), artifact.sha256);
+      assert.equal(contents.byteLength, artifact.byteLength);
     }
     assert.deepEqual(manifest.artifacts.renderAudit.metadata, CLEAN_RENDER_METADATA);
     assert.deepEqual(validatePublishedRun(manifest), { ok: true, errors: [] });
@@ -236,10 +238,11 @@ test("同一 runId 的旧预测绝不覆写", async () => {
   }
 });
 
-test("Task5 审计夹具在无独立账本时仍重新审计并绑定接受事实", async () => {
+test("无独立账本的旧 Task5 夹具可读取但不得作为正式流水线发布", async () => {
   const outputRoot = await mkdtemp(join(tmpdir(), "football-pipeline-task5-"));
   const fixture = JSON.parse(await readFile(new URL("../assets/sample-data/club-league-snapshot.json", import.meta.url), "utf8"));
   fixture.manifest.dataCutoffAt = "2026-08-01T10:00:00Z";
+  delete fixture.evidenceLedger;
   fixture.evidenceAudit.accepted = [{
     claimId: "injury-task5-1",
     topic: "injury",
@@ -254,12 +257,10 @@ test("Task5 审计夹具在无独立账本时仍重新审计并绑定接受事�
     deterministicAdjustment: { homeLambdaDelta: -0.1, awayLambdaDelta: 0 }
   }];
   try {
-    const result = await runPrematchPipeline({ input: fixture, outDir: outputRoot });
-    const snapshot = JSON.parse(await readFile(result.paths.inputSnapshot, "utf8"));
-    const prediction = JSON.parse(await readFile(result.paths.prediction, "utf8"));
-
-    assert.deepEqual(snapshot.evidenceAudit.accepted.map((claim) => claim.claimId), ["injury-task5-1"]);
-    assert.deepEqual(prediction.adjustments.map((adjustment) => adjustment.claimId), ["injury-task5-1"]);
+    await assert.rejects(
+      runPrematchPipeline({ input: fixture, outDir: outputRoot }),
+      /显式 evidenceLedger/
+    );
   } finally {
     await rm(outputRoot, { recursive: true, force: true });
   }
@@ -287,6 +288,39 @@ test("显式非法 ledger 不得回退到旧 Task5 审计", async () => {
       runPrematchPipeline({ input: fixture, outDir: outputRoot }),
       /显式证据账本结构无效/
     );
+  } finally {
+    await rm(outputRoot, { recursive: true, force: true });
+  }
+});
+
+test("只有候选首发被拒绝时正式流水线发布带明确缺失项的低置信运行", async () => {
+  const outputRoot = await mkdtemp(join(tmpdir(), "football-pipeline-candidate-lineup-"));
+  const fixture = JSON.parse(await readFile(new URL("../assets/sample-data/club-league-snapshot.json", import.meta.url), "utf8"));
+  fixture.manifest.runId = "candidate-lineup-run";
+  fixture.evidenceLedger.push({
+    claimId: "ars-candidate-lineup",
+    topic: "lineup",
+    subject: "ARS",
+    sourceTier: "club_official",
+    sourceUrl: "https://example.invalid/ars/candidate-lineup",
+    publishedAt: "2026-08-01T09:30:00Z",
+    observedAt: "2026-08-01T09:31:00Z",
+    validUntil: "2026-08-01T15:00:00Z",
+    affectsModel: true,
+    reviewStatus: "accepted",
+    lineupStatus: "candidate",
+    value: ["ARS-1", "ARS-2"]
+  });
+
+  try {
+    const result = await runPrematchPipeline({ input: fixture, outDir: outputRoot });
+    const audit = JSON.parse(await readFile(result.paths.audit, "utf8"));
+    const manifest = JSON.parse(await readFile(result.paths.manifest, "utf8"));
+
+    assert.equal(audit.status, "degraded_low_confidence");
+    assert.ok(audit.missing.includes("lineup.ARS.confirmed"));
+    assert.equal(manifest.artifacts.audit.metadata.evidenceAudit.status, "degraded_low_confidence");
+    assert.deepEqual(validatePublishedRun(manifest), { ok: true, errors: [] });
   } finally {
     await rm(outputRoot, { recursive: true, force: true });
   }

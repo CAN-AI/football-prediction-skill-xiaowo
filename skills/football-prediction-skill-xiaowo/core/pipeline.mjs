@@ -1,13 +1,16 @@
 import { createHash } from "node:crypto";
-import { mkdir, readFile, writeFile } from "node:fs/promises";
+import { mkdir, readFile, stat, writeFile } from "node:fs/promises";
 import { basename, join, resolve } from "node:path";
 import { auditEvidenceLedger } from "./evidence.mjs";
 import { MODEL_VERSION, predict90 } from "./model.mjs";
 import { renderLongPng } from "./render.mjs";
 import { buildPrematchReport } from "./report.mjs";
 import { appendArtifact, createRunManifest, finalizeRunManifest } from "./schema.mjs";
+import { contentHash } from "./utils.mjs";
 
 const REQUIRED_ARTIFACTS = Object.freeze([
+  ["evidenceLedger", "evidence-ledger.json"],
+  ["audit", "audit.json"],
   ["reportPng", "report-long.png"],
   ["reportMarkdown", "report.md"],
   ["reportHtml", "report-long.html"],
@@ -34,19 +37,14 @@ function evidenceLedgerFrom(input) {
     }
     throw new Error(`显式证据账本结构无效：${field} 必须是数组或包含 ledger 数组的对象。`);
   }
-  const accepted = Array.isArray(input.evidenceAudit?.accepted) ? input.evidenceAudit.accepted : [];
-  const rejected = Array.isArray(input.evidenceAudit?.rejected)
-    ? input.evidenceAudit.rejected.map((item) => item?.claim).filter(Boolean)
-    : [];
-  return [...accepted, ...rejected];
+  throw new Error("正式流水线必须提供显式 evidenceLedger/ledger，不能从旧 evidenceAudit 静默重建账本。");
 }
 
 function dataCutoffFrom(input) {
   return input.manifest?.dataCutoffAt
     ?? input.dataCutoffAt
     ?? input.cutoffAt
-    ?? input.evidenceLedger?.cutoffAt
-    ?? input.manifest?.match?.kickoffAt;
+    ?? input.evidenceLedger?.cutoffAt;
 }
 
 function assertEvidenceAuditCompletable(evidenceAudit) {
@@ -68,14 +66,47 @@ function renderAuditErrors(audit) {
   return errors;
 }
 
+function assertAuditedModelBindings({ manifest, snapshot, evidenceAudit }) {
+  const accepted = new Map(evidenceAudit.accepted.map((claim) => [claim.claimId, claim]));
+  const profile = manifest.competitionProfile;
+  const baseline = profile.baseline;
+  const baselineClaims = baseline.evidenceClaimIds.map((claimId) => accepted.get(claimId));
+  if (baselineClaims.some((claim) => !claim)) {
+    throw new Error("赛事画像基线绑定的 evidenceClaimIds 必须全部通过本次证据审计。");
+  }
+  const expectedSubjects = new Set([profile.competitionId, `${profile.competitionId}:${profile.season}`]);
+  const baselineBound = baselineClaims.some((claim) => (
+    ["baseline", "statistics"].includes(claim.topic)
+    && expectedSubjects.has(claim.subject)
+    && claim.metricDefinitionVersion === profile.baselineVersion
+    && Number(claim.value?.goalsPerTeam) === baseline.goalsPerTeam
+    && contentHash(claim.value?.sampleWindow) === contentHash(baseline.sampleWindow)
+  ));
+  if (!baselineBound) {
+    throw new Error("赛事画像 baseline.goalsPerTeam/sampleWindow/baselineVersion 未与同赛事已审计证据严格绑定。");
+  }
+
+  for (const teamId of [manifest.match.homeTeamId, manifest.match.awayTeamId]) {
+    const team = snapshot?.teams?.[teamId];
+    const claim = accepted.get(team?.evidenceClaimId);
+    const bound = claim
+      && claim.topic === "statistics"
+      && claim.subject === teamId
+      && ["rating", "attack", "defense"].every((field) => Number(claim.value?.[field]) === team[field]);
+    if (!bound) throw new Error(`球队 ${teamId} 的 rating/attack/defense 未与本次已审计证据绑定。`);
+  }
+}
+
 export function validatePublishedRun(run) {
   const errors = [];
   for (const [artifactName, fileName] of REQUIRED_ARTIFACTS) {
     const artifact = run?.artifacts?.[artifactName];
     if (!artifact
       || artifact.path !== fileName
-      || !/^[a-f0-9]{64}$/i.test(artifact.sha256 ?? "")) {
-      errors.push(`${fileName} 的固定相对 path 或 SHA-256 无效`);
+      || !/^[a-f0-9]{64}$/i.test(artifact.sha256 ?? "")
+      || !Number.isInteger(artifact.byteLength)
+      || artifact.byteLength <= 0) {
+      errors.push(`${fileName} 的固定相对 path、SHA-256 或 byteLength 字节数无效`);
     }
   }
   const metadata = run?.artifacts?.renderAudit?.metadata;
@@ -106,7 +137,7 @@ async function writeJson(path, value) {
 
 export function finalizeManifest(manifest) {
   const evidenceAudit = manifest?.evidenceAudit
-    ?? manifest?.artifacts?.inputSnapshot?.metadata?.evidenceAudit;
+    ?? manifest?.artifacts?.audit?.metadata?.evidenceAudit;
   if (evidenceAudit?.status === "degraded_low_confidence"
     && !evidenceAudit.missing?.length
     && !evidenceAudit.conflicts?.length) {
@@ -118,8 +149,10 @@ export function finalizeManifest(manifest) {
     if (!artifact) {
       throw new Error(`正式运行缺少 ${fileName} 及其 SHA-256 哈希。`);
     }
-    if (typeof artifact.path !== "string" || !artifact.path.trim() || !/^[a-f0-9]{64}$/i.test(artifact.sha256 ?? "")) {
-      throw new Error(`${fileName} 的 path 或 SHA-256 无效。`);
+    if (typeof artifact.path !== "string" || !artifact.path.trim()
+      || !/^[a-f0-9]{64}$/i.test(artifact.sha256 ?? "")
+      || !Number.isInteger(artifact.byteLength) || artifact.byteLength <= 0) {
+      throw new Error(`${fileName} 的 path、SHA-256 或 byteLength 无效。`);
     }
   }
   const publication = validatePublishedRun(manifest);
@@ -152,6 +185,7 @@ export async function runPrematchPipeline({ input, outDir } = {}) {
     cutoffAt: manifest.dataCutoffAt
   });
   assertEvidenceAuditCompletable(evidenceAudit);
+  assertAuditedModelBindings({ manifest, snapshot: loaded.snapshot, evidenceAudit });
 
   if (typeof outDir !== "string" || !outDir.trim()) throw new Error("流水线 outDir 不能为空。");
   const outputRoot = resolve(outDir);
@@ -165,6 +199,8 @@ export async function runPrematchPipeline({ input, outDir } = {}) {
   }
 
   const paths = {
+    evidenceLedger: join(runDirectory, "evidence-ledger.json"),
+    audit: join(runDirectory, "audit.json"),
     inputSnapshot: join(runDirectory, "input-snapshot.json"),
     prediction: join(runDirectory, "prediction.json"),
     reportMarkdown: join(runDirectory, "report.md"),
@@ -174,12 +210,10 @@ export async function runPrematchPipeline({ input, outDir } = {}) {
     manifest: join(runDirectory, "run-manifest.json")
   };
 
-  const auditedSnapshot = {
-    manifest,
-    snapshot: loaded.snapshot,
-    evidenceLedger: ledger,
-    evidenceAudit
-  };
+  await writeJson(paths.evidenceLedger, { match: manifest.match, cutoffAt: manifest.dataCutoffAt, ledger });
+  await writeJson(paths.audit, evidenceAudit);
+
+  const auditedSnapshot = { manifest, snapshot: loaded.snapshot };
   await writeJson(paths.inputSnapshot, auditedSnapshot);
 
   const prediction = predict90({ manifest, snapshot: loaded.snapshot, evidenceAudit });
@@ -205,10 +239,13 @@ export async function runPrematchPipeline({ input, outDir } = {}) {
   const errors = renderAuditErrors(renderAudit);
   if (errors.length) throw new Error(`渲染审计失败：${errors.join("；")}`);
 
-  const hashes = Object.fromEntries(await Promise.all(
+  const artifactFiles = Object.fromEntries(await Promise.all(
     Object.entries(paths)
       .filter(([name]) => name !== "manifest")
-      .map(async ([name, path]) => [name, await sha256File(path)])
+      .map(async ([name, path]) => {
+        const fileStat = await stat(path);
+        return [name, { sha256: await sha256File(path), byteLength: fileStat.size }];
+      })
   ));
   const evidenceAuditSummary = {
     status: evidenceAudit.status,
@@ -216,7 +253,7 @@ export async function runPrematchPipeline({ input, outDir } = {}) {
     conflicts: evidenceAudit.conflicts
   };
   for (const [artifactName, fileName] of REQUIRED_ARTIFACTS) {
-    const metadata = artifactName === "inputSnapshot"
+    const metadata = artifactName === "audit"
       ? { evidenceAudit: evidenceAuditSummary }
       : artifactName === "renderAudit"
         ? {
@@ -230,7 +267,8 @@ export async function runPrematchPipeline({ input, outDir } = {}) {
         : undefined;
     manifest = appendArtifact(manifest, artifactName, {
       path: fileName,
-      sha256: hashes[artifactName],
+      sha256: artifactFiles[artifactName].sha256,
+      byteLength: artifactFiles[artifactName].byteLength,
       ...(metadata ? { metadata } : {})
     });
   }

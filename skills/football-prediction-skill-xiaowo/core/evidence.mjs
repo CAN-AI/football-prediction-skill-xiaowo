@@ -1,9 +1,12 @@
+import { contentHash } from "./utils.mjs";
+
 const TOPIC_AUTHORITIES = Object.freeze({
   schedule: ["official", "competition_official", "governing_body"],
   regulation: ["official", "competition_official", "governing_body"],
   lineup: ["official", "competition_official", "governing_body", "club_official"],
   injury: ["official", "club_official", "medical_official"],
   statistics: ["official", "competition_official", "data_provider"],
+  baseline: ["official", "competition_official", "governing_body", "data_provider"],
   xg: ["data_provider"],
   weather: ["weather_provider", "official"],
   market: ["market_exchange", "market_provider", "data_provider"],
@@ -84,6 +87,10 @@ function rejectionReasons(claim, cutoffAt) {
   } else if (publishedTime > cutoffTime || observedTime > cutoffTime) {
     reasons.push("证据晚于数据截断时间");
   }
+  if (isPresent(claim.validUntil)) {
+    if (!isValidTime(claim.validUntil)) reasons.push("validUntil 有效期无效");
+    else if (Date.parse(claim.validUntil) < cutoffTime) reasons.push("证据已在数据截止时间前过期（validUntil）");
+  }
 
   return reasons;
 }
@@ -111,7 +118,9 @@ function buildConflicts(ledgerClaims) {
     const eventFeedIds = [...new Set(claims.map((claim) => claim.eventFeedId ?? null))];
     const hasMetricConflict = metricDefinitionVersions.length > 1;
     const hasFeedConflict = eventFeedIds.length > 1;
-    if (!hasMetricConflict && !hasFeedConflict) continue;
+    const valueFingerprints = [...new Set(claims.map((claim) => contentHash(claim.value ?? null)))];
+    const hasSameSourceValueConflict = !hasMetricConflict && !hasFeedConflict && valueFingerprints.length > 1;
+    if (!hasMetricConflict && !hasFeedConflict && !hasSameSourceValueConflict) continue;
 
     for (const claim of claims) conflictClaims.add(claim);
     conflicts.push({
@@ -120,6 +129,7 @@ function buildConflicts(ledgerClaims) {
       claimIds: claims.map((claim) => claim.claimId),
       metricDefinitionVersions,
       eventFeedIds,
+      reason: hasSameSourceValueConflict ? "同一指标定义和事件源出现不同值" : "指标定义或事件源不一致",
       values: claims.map((claim) => ({
         claimId: claim.claimId,
         value: claim.value,
@@ -172,8 +182,26 @@ export function auditEvidenceLedger({ ledger, match, cutoffAt } = {}) {
     .filter(({ reasons }) => reasons.length > 0)
     .map(({ claim, reasons }) => ({ claim, reasons }));
 
-  const status = missing.length || rejected.length || conflicts.length ? "degraded_low_confidence" : "passed";
-  return { status, accepted, rejected, missing, conflicts, dataConfidence: confidenceFor({ status, accepted, rejected, missing, conflicts }) };
+  for (const { claim } of rejected) {
+    if (claim?.topic === "lineup"
+      && !["confirmed", "official_confirmed"].includes(claim?.lineupStatus)
+      && isPresent(claim?.subject)) {
+      missing.push(`lineup.${claim.subject}.confirmed`);
+    }
+  }
+  if (accepted.length === 0) missing.push("ledger.acceptedEvidence");
+
+  const uniqueMissing = [...new Set(missing)];
+
+  const status = uniqueMissing.length || rejected.length || conflicts.length ? "degraded_low_confidence" : "passed";
+  return {
+    status,
+    accepted,
+    rejected,
+    missing: uniqueMissing,
+    conflicts,
+    dataConfidence: confidenceFor({ status, accepted, rejected, missing: uniqueMissing, conflicts })
+  };
 }
 
 export { TOPIC_AUTHORITIES };

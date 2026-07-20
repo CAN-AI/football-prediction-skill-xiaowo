@@ -61,10 +61,15 @@ function assertArtifact(artifact) {
   if (typeof artifact.sha256 !== "string" || !/^[a-f0-9]{64}$/i.test(artifact.sha256)) {
     throw new Error("产物哈希必须是 64 位 SHA-256 十六进制字符串。");
   }
+  if (!Number.isInteger(artifact.byteLength) || artifact.byteLength <= 0) {
+    throw new Error("产物必须包含大于 0 的 byteLength 字节数。");
+  }
 }
 
 export function validateCompetitionProfile(profile) {
   const regulation = profile?.regulation ?? {};
+  const baseline = profile?.baseline ?? {};
+  const sampleWindow = baseline.sampleWindow;
   const errors = [];
   const invalidTwoLegged = regulation.twoLegged === true
     && (regulation.extraTime !== true || regulation.penalties !== true);
@@ -73,7 +78,29 @@ export function validateCompetitionProfile(profile) {
     errors.push("赛事类别不受支持。");
   }
   if (!profile?.competitionId) errors.push("赛事标识不能为空。");
+  if (!profile?.season) errors.push("赛事画像 season 赛季不能为空。");
+  if (!profile?.level) errors.push("赛事画像 level 级别不能为空。");
   if (!profile?.baselineVersion) errors.push("基线版本不能为空。");
+  if (!Number.isFinite(baseline.goalsPerTeam) || baseline.goalsPerTeam <= 0) {
+    errors.push("赛事画像 baseline.goalsPerTeam 进球基线必须是正数。");
+  }
+  if (!sampleWindow || typeof sampleWindow !== "object"
+    || typeof sampleWindow.from !== "string" || !sampleWindow.from
+    || typeof sampleWindow.to !== "string" || !sampleWindow.to
+    || !Number.isInteger(sampleWindow.matchCount) || sampleWindow.matchCount <= 0) {
+    errors.push("赛事画像 baseline.sampleWindow 样本窗口必须包含 from、to 和正整数 matchCount。");
+  }
+  if (!Array.isArray(baseline.evidenceClaimIds)
+    || baseline.evidenceClaimIds.length === 0
+    || baseline.evidenceClaimIds.some((claimId) => typeof claimId !== "string" || !claimId.trim())) {
+    errors.push("赛事画像 baseline.evidenceClaimIds 必须绑定至少一条基线证据。");
+  }
+  if (typeof regulation.neutralVenue !== "boolean") {
+    errors.push("赛事画像 regulation.neutralVenue 中立场规则必须显式声明。");
+  }
+  for (const field of ["twoLegged", "extraTime", "penalties"]) {
+    if (typeof regulation[field] !== "boolean") errors.push(`赛事画像 regulation.${field} 必须显式声明。`);
+  }
   if (invalidTwoLegged) errors.push("两回合淘汰赛必须声明加时和点球规则。");
 
   return { ok: errors.length === 0, errors };

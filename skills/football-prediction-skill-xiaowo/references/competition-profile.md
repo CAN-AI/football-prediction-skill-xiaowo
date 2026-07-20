@@ -19,7 +19,13 @@
   "family": "league",
   "competitionId": "ENG-PL",
   "season": "2026-27",
+  "level": "senior_professional",
   "baselineVersion": "eng-pl-2026-27-r1",
+  "baseline": {
+    "goalsPerTeam": 1.55,
+    "sampleWindow": { "from": "2025-08-01", "to": "2026-05-31", "matchCount": 380 },
+    "evidenceClaimIds": ["eng-pl-baseline-2026-27"]
+  },
   "regulation": {
     "extraTime": false,
     "penalties": false,
@@ -29,7 +35,7 @@
 }
 ```
 
-画像还应包含已审计的基线参数，如 `baseline.goalsPerTeam` 与 `homeAdvantage`。参数必须有版本，不能从另一赛事或另一赛季静默继承。
+`baseline.goalsPerTeam`、`baseline.sampleWindow` 与 `baseline.evidenceClaimIds` 是正式发布必填字段。绑定 claim 必须在本次 `audit.json` 中被接受，主体匹配赛事/赛季、`metricDefinitionVersion` 匹配 `baselineVersion`，且值与样本窗口逐字段一致。球队 `rating/attack/defense` 同样要通过 `snapshot.teams.<teamId>.evidenceClaimId` 绑定本次已接受统计 claim；不得从另一赛事、赛季或旧审计静默继承。
 
 ## 选择顺序
 

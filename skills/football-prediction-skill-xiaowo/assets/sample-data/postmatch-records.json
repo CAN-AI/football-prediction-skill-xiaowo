@@ -1,0 +1,55 @@
+{
+  "records": [
+    {
+      "predictionRunId": "sample-prematch-001",
+      "predictionSha256": "1111111111111111111111111111111111111111111111111111111111111111",
+      "competitionProfileKey": "league:ENG-PL",
+      "matchId": "sample-match-001",
+      "publishedBeforeKickoff": true,
+      "comparable": true,
+      "probabilities": { "home": 0.52, "draw": 0.27, "away": 0.21 },
+      "actualOutcome": "home",
+      "actualResult": {
+        "homeGoals": 2,
+        "awayGoals": 1,
+        "decidedIn": "90min",
+        "observedAt": "2026-08-01T17:00:00Z",
+        "sourceClaimId": "sample-result-001"
+      }
+    },
+    {
+      "predictionRunId": "sample-prematch-002",
+      "predictionSha256": "2222222222222222222222222222222222222222222222222222222222222222",
+      "competitionProfileKey": "league:ENG-PL",
+      "matchId": "sample-match-002",
+      "publishedBeforeKickoff": true,
+      "comparable": true,
+      "probabilities": { "home": 0.41, "draw": 0.31, "away": 0.28 },
+      "actualOutcome": "draw",
+      "actualResult": {
+        "homeGoals": 1,
+        "awayGoals": 1,
+        "decidedIn": "90min",
+        "observedAt": "2026-08-08T17:00:00Z",
+        "sourceClaimId": "sample-result-002"
+      }
+    },
+    {
+      "predictionRunId": "sample-prematch-003",
+      "predictionSha256": "3333333333333333333333333333333333333333333333333333333333333333",
+      "competitionProfileKey": "league:ENG-PL",
+      "matchId": "sample-match-003",
+      "publishedBeforeKickoff": true,
+      "comparable": true,
+      "probabilities": { "home": 0.36, "draw": 0.29, "away": 0.35 },
+      "actualOutcome": "away",
+      "actualResult": {
+        "homeGoals": 0,
+        "awayGoals": 1,
+        "decidedIn": "90min",
+        "observedAt": "2026-08-15T17:00:00Z",
+        "sourceClaimId": "sample-result-003"
+      }
+    }
+  ]
+}

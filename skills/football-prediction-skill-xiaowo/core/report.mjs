@@ -225,8 +225,19 @@ function prematchDocument(data = {}) {
 }
 
 function actualOutcome(actual = {}) {
+  if (!actual || typeof actual !== "object") return null;
   if (!Number.isInteger(actual.homeGoals) || actual.homeGoals < 0 || !Number.isInteger(actual.awayGoals) || actual.awayGoals < 0) return null;
   return actual.homeGoals > actual.awayGoals ? "主胜" : actual.homeGoals < actual.awayGoals ? "客胜" : "平局";
+}
+
+function actualNinetyMinuteResult(actual = {}) {
+  if (!actual || typeof actual !== "object") return null;
+  if (actual.decidedIn === "90min") return actual;
+  const explicit = actual.ninetyMinuteResult ?? actual.result90min ?? actual.regulationResult;
+  return explicit && Number.isInteger(explicit.homeGoals) && explicit.homeGoals >= 0
+    && Number.isInteger(explicit.awayGoals) && explicit.awayGoals >= 0
+    ? explicit
+    : null;
 }
 
 function acceptedClaimMap(audit = {}) {
@@ -303,9 +314,11 @@ function postmatchDocument(data = {}) {
   const candidateResult = postmatch.actualResult ?? data.actualResult ?? data.record ?? data.result ?? {};
   const actual = boundClaim(candidateResult, claims, { topic: "result", kind: "result", manifest }) ? candidateResult : {};
   const teams = teamNames(manifest);
-  const outcome = actualOutcome(actual);
-  const resultLine = outcome ? `实际赛果：${teams.home} ${actual.homeGoals}–${actual.awayGoals} ${teams.away}（${text(actual.decidedIn)}）` : "实际赛果：未提供。";
-  const realized = outcomeProbability(outcome, prediction);
+  const finalOutcome = actualOutcome(actual);
+  const actual90 = actualNinetyMinuteResult(actual);
+  const outcome90 = actualOutcome(actual90);
+  const resultLine = finalOutcome ? `实际赛果：${teams.home} ${actual.homeGoals}–${actual.awayGoals} ${teams.away}（${text(actual.decidedIn)}）` : "实际赛果：未提供。";
+  const realized = outcomeProbability(outcome90, prediction);
   const forecast = predictedOutcome(prediction);
   const runId = binding.runId ?? postmatch.prematchRunId ?? manifest.parentRunId;
   const predictionHash = binding.predictionHash ?? postmatch.predictionHash ?? manifest.artifacts?.prediction?.sha256;
@@ -316,13 +329,13 @@ function postmatchDocument(data = {}) {
     meta: `复盘口径：90分钟 · 原预测模型：${text(prediction.modelVersion)}`,
     sections: [
       section("赛前运行绑定", runId && predictionHash ? "blue" : "red", [list([`赛前运行 ID：${text(runId)}`, `预测产物哈希：${text(predictionHash)}`])]),
-      section("赛果事实与事件时间线", outcome ? "green" : "red", [paragraph(resultLine), paragraph(`赛果观察时间：${outcome ? text(actual.observedAt) : "未提供"}`), paragraph(`赛果来源证据：${outcome ? text(actual.sourceClaimId ?? actual.claimId) : "未提供"}`), ...timelineBlocks(postmatch.eventTimeline, claims, manifest)]),
+      section("赛果事实与事件时间线", finalOutcome ? "green" : "red", [paragraph(resultLine), paragraph(`赛果观察时间：${finalOutcome ? text(actual.observedAt) : "未提供"}`), paragraph(`赛果来源证据：${finalOutcome ? text(actual.sourceClaimId ?? actual.claimId) : "未提供"}`), ...timelineBlocks(postmatch.eventTimeline, claims, manifest)]),
       section("过程统计与来源口径", "blue", statisticsBlocks(postmatch.processStatistics, claims, manifest)),
       section("预测命中审计", "formula", [table(["项目", "值"], [
         ["赛前最高概率结果", text(forecast)],
-        ["实际90分钟结果", text(outcome)],
-        ["方向命中", outcome && forecast ? (outcome === forecast ? "是" : "否") : "未提供"],
-        ["实际结果赛前概率", outcome ? percent(realized) : "未提供"]
+        ["实际90分钟结果", outcome90 ?? "未提供（来源未给出90分钟赛果）"],
+        ["方向命中", outcome90 && forecast ? (outcome90 === forecast ? "是" : "否") : "未提供"],
+        ["实际结果赛前概率", outcome90 ? percent(realized) : "未提供"]
       ])]),
       section("校准指标", "formula", calibrationBlocks(postmatch.calibrationMetrics)),
       section("禁止事后回写", rewrite.enforced === true && rewrite.predictionHashUnchanged === true ? "green" : "red", [table(["项目", "状态"], [

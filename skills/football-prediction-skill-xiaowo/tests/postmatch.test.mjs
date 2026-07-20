@@ -7,7 +7,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { promisify } from "node:util";
-import { proposeCalibration, recordPostmatch } from "../core/postmatch.mjs";
+import { competitionProfileKey, proposeCalibration, recordPostmatch } from "../core/postmatch.mjs";
 
 const PREDICTION_SHA256 = "a".repeat(64);
 const execFileAsync = promisify(execFile);
@@ -23,8 +23,22 @@ function publishedManifest() {
       awayTeamId: "CHE",
       kickoffAt: "2026-08-01T15:00:00Z"
     },
-    competitionProfile: { family: "league", competitionId: "ENG-PL" },
-    artifacts: { prediction: { path: "prediction.json", sha256: PREDICTION_SHA256 } }
+    mode: "prematch",
+    competitionProfile: {
+      family: "league",
+      competitionId: "ENG-PL",
+      season: "2026-27",
+      level: "senior_professional",
+      stage: "regular_season",
+      baselineVersion: "eng-pl-2026-27-r1",
+      baseline: {
+        goalsPerTeam: 1.55,
+        sampleWindow: { from: "2025-08-01", to: "2026-05-31", matchCount: 380 },
+        evidenceClaimIds: ["baseline-1"]
+      },
+      regulation: { twoLegged: false, extraTime: false, penalties: false, neutralVenue: false }
+    },
+    artifacts: { prediction: { path: "prediction.json", sha256: PREDICTION_SHA256, byteLength: 1 } }
   };
 }
 
@@ -47,11 +61,18 @@ function confirmedFacts(overrides = {}) {
   return {
     predictionRunId: "prematch-run-1",
     predictionSha256: PREDICTION_SHA256,
+    dataCutoffAt: "2026-08-01T18:00:00Z",
     actualResult,
-    acceptedClaims: [{
+    evidenceLedger: [{
       claimId: "result-claim-1",
       topic: "result",
-      matchId: "ARS-CHE-2026-08-01",
+      subject: "ARS-CHE-2026-08-01",
+      sourceTier: "competition_official",
+      sourceUrl: "https://official.test/result",
+      publishedAt: "2026-08-01T17:00:00Z",
+      observedAt: "2026-08-01T17:00:00Z",
+      affectsModel: true,
+      reviewStatus: "accepted",
       value: {
         homeGoals: actualResult.homeGoals,
         awayGoals: actualResult.awayGoals,
@@ -63,15 +84,31 @@ function confirmedFacts(overrides = {}) {
   };
 }
 
-test("少于三十场可比较样本时不提出调参", () => {
-  const records = Array.from({ length: 29 }, (_, index) => ({
+function validCalibrationRecord(index, overrides = {}) {
+  const competitionProfile = publishedManifest().competitionProfile;
+  return {
     predictionRunId: `run-${index}`,
-    competitionProfileKey: "league:ENG-PL",
+    predictionSha256: String((index % 9) + 1).repeat(64),
+    competitionProfile,
+    competitionProfileKey: competitionProfileKey(competitionProfile),
+    matchId: `match-${index}`,
     publishedBeforeKickoff: true,
     comparable: true,
+    resultScope: "90min",
     actualOutcome: "home",
-    probabilities: { home: 0.4, draw: 0.3, away: 0.3 }
-  }));
+    probabilities: { home: 0.4, draw: 0.3, away: 0.3 },
+    actualResult: { homeGoals: 2, awayGoals: 1, decidedIn: "90min" },
+    dataQuality: {
+      predictionLineageVerified: true,
+      resultEvidenceAccepted: true,
+      uncontaminated: true
+    },
+    ...overrides
+  };
+}
+
+test("少于三十场可比较样本时不提出调参", () => {
+  const records = Array.from({ length: 29 }, (_, index) => validCalibrationRecord(index));
 
   const proposal = proposeCalibration(records);
 
@@ -81,12 +118,7 @@ test("少于三十场可比较样本时不提出调参", () => {
 });
 
 test("无效概率记录不能凑足三十场门槛", () => {
-  const records = Array.from({ length: 30 }, (_, index) => ({
-    predictionRunId: `run-${index}`,
-    competitionProfileKey: "league:ENG-PL",
-    publishedBeforeKickoff: true,
-    comparable: true,
-    actualOutcome: "home",
+  const records = Array.from({ length: 30 }, (_, index) => validCalibrationRecord(index, {
     probabilities: index === 29
       ? { home: 1.2, draw: -0.1, away: -0.1 }
       : { home: 0.4, draw: 0.3, away: 0.3 }
@@ -100,23 +132,18 @@ test("无效概率记录不能凑足三十场门槛", () => {
 });
 
 test("达到门槛后只对同赛事画像计算指标并等待人工批准", () => {
-  const valid = Array.from({ length: 30 }, (_, index) => ({
-    predictionRunId: `run-${index}`,
-    competitionProfileKey: "league:ENG-PL",
-    publishedBeforeKickoff: true,
-    comparable: true,
-    actualOutcome: "home",
+  const valid = Array.from({ length: 30 }, (_, index) => validCalibrationRecord(index, {
     probabilities: { home: 0.5, draw: 0.3, away: 0.2 }
   }));
   const excluded = [
-    { ...valid[0], competitionProfileKey: "league:ESP-LL" },
-    { ...valid[1], publishedBeforeKickoff: false },
-    { ...valid[2], comparable: false }
+    { ...validCalibrationRecord(30), competitionProfileKey: "profile-v1:other" },
+    { ...validCalibrationRecord(31), publishedBeforeKickoff: false },
+    { ...validCalibrationRecord(32), comparable: false }
   ];
 
   const proposal = proposeCalibration([...valid, ...excluded]);
 
-  assert.equal(proposal.competitionProfileKey, "league:ENG-PL");
+  assert.equal(proposal.competitionProfileKey, competitionProfileKey(publishedManifest().competitionProfile));
   assert.equal(proposal.comparableSampleCount, 30);
   assert.equal(proposal.eligibility, "eligible_for_human_review");
   assert.ok(Math.abs(proposal.metrics.brierScore - 0.38) < 1e-12);
@@ -136,7 +163,7 @@ test("赛后记录绑定已发布运行、预测哈希和有来源的赛果", ()
 
   assert.equal(record.predictionRunId, manifest.runId);
   assert.equal(record.predictionSha256, manifest.artifacts.prediction.sha256);
-  assert.equal(record.competitionProfileKey, "league:ENG-PL");
+  assert.equal(record.competitionProfileKey, competitionProfileKey(manifest.competitionProfile));
   assert.equal(record.actualOutcome, "home");
   assert.deepEqual(record.probabilities, { home: 0.5, draw: 0.3, away: 0.2 });
   assert.equal(record.actualResult.sourceClaimId, "result-claim-1");
@@ -214,10 +241,10 @@ test("缺失、加时或点球口径的赛果不得进入 90 分钟校准", () =
     const facts = confirmedFacts();
     if (decidedIn === undefined) {
       delete facts.actualResult.decidedIn;
-      delete facts.acceptedClaims[0].value.decidedIn;
+      delete facts.evidenceLedger[0].value.decidedIn;
     } else {
       facts.actualResult.decidedIn = decidedIn;
-      facts.acceptedClaims[0].value.decidedIn = decidedIn;
+      facts.evidenceLedger[0].value.decidedIn = decidedIn;
     }
 
     const record = recordPostmatch({
@@ -263,14 +290,14 @@ test("赛后记录拒绝只给裸 sourceClaimId 而没有 accepted claim", () =>
     () => recordPostmatch({
       manifest: publishedManifest(),
       prediction: prediction(),
-      facts: confirmedFacts({ acceptedClaims: [] })
+      facts: confirmedFacts({ evidenceLedger: [] })
     }),
     /accepted.*sourceClaimId/
   );
 });
 
 test("赛后记录拒绝主题、比赛身份或规范化赛果不匹配的 claim", () => {
-  const validClaim = confirmedFacts().acceptedClaims[0];
+  const validClaim = confirmedFacts().evidenceLedger[0];
   for (const claim of [
     { ...validClaim, topic: "statistics" },
     { ...validClaim, matchId: "OTHER-MATCH" },
@@ -280,7 +307,7 @@ test("赛后记录拒绝主题、比赛身份或规范化赛果不匹配的 clai
       () => recordPostmatch({
         manifest: publishedManifest(),
         prediction: prediction(),
-        facts: confirmedFacts({ evidenceAudit: { accepted: [claim] }, acceptedClaims: undefined })
+        facts: confirmedFacts({ evidenceLedger: [claim] })
       }),
       /accepted.*sourceClaimId/
     );
@@ -366,13 +393,9 @@ test("propose-calibration CLI 写出不可自动应用的提案", async () => {
   const recordsPath = join(directory, "records.json");
   const outputPath = join(directory, "proposal.json");
   const scriptPath = fileURLToPath(new URL("../scripts/propose-calibration.mjs", import.meta.url));
-  const records = Array.from({ length: 29 }, (_, index) => ({
-    predictionRunId: `run-${index}`,
-    competitionProfileKey: "league:ENG-PL",
-    publishedBeforeKickoff: true,
-    comparable: true,
+  const records = Array.from({ length: 29 }, (_, index) => validCalibrationRecord(index, {
     actualOutcome: "draw",
-    probabilities: { home: 0.4, draw: 0.3, away: 0.3 }
+    actualResult: { homeGoals: 1, awayGoals: 1, decidedIn: "90min" }
   }));
   await writeFile(recordsPath, JSON.stringify(records), "utf8");
 

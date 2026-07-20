@@ -6,6 +6,7 @@ const EMPTY_ARTIFACTS = Object.freeze({
   audit: null,
   inputSnapshot: null,
   prediction: null,
+  record: null,
   reportMarkdown: null,
   reportHtml: null,
   reportPng: null,

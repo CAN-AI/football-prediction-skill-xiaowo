@@ -70,6 +70,7 @@ test("运行清单初始化全部产物为空且拒绝自关联父运行", () =>
     audit: null,
     inputSnapshot: null,
     prediction: null,
+    record: null,
     reportMarkdown: null,
     reportHtml: null,
     reportPng: null,

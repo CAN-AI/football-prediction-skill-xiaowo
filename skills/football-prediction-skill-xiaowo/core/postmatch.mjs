@@ -1,4 +1,6 @@
 import { boundClaim } from "./facts.mjs";
+import { auditEvidenceLedger } from "./evidence.mjs";
+import { contentHash } from "./utils.mjs";
 
 const OUTCOMES = Object.freeze(["home", "draw", "away"]);
 
@@ -49,6 +51,40 @@ function validProbabilities(probabilities) {
   return Math.abs(total - 1) <= 1e-6;
 }
 
+function ninetyMinuteResult(result = {}) {
+  if (result.decidedIn === "90min") {
+    return { homeGoals: result.homeGoals, awayGoals: result.awayGoals };
+  }
+  const explicit = result.ninetyMinuteResult ?? result.result90min ?? result.regulationResult;
+  if (!explicit || !Number.isInteger(explicit.homeGoals) || explicit.homeGoals < 0
+    || !Number.isInteger(explicit.awayGoals) || explicit.awayGoals < 0) return null;
+  return { homeGoals: explicit.homeGoals, awayGoals: explicit.awayGoals };
+}
+
+function outcomeFromScore(result) {
+  if (!result) return null;
+  return result.homeGoals > result.awayGoals ? "home" : result.homeGoals === result.awayGoals ? "draw" : "away";
+}
+
+export function competitionProfileKey(profile = {}) {
+  const relevant = {
+    family: profile.family ?? null,
+    competitionId: profile.competitionId ?? null,
+    season: profile.season ?? null,
+    level: profile.level ?? null,
+    stage: profile.stage ?? null,
+    baselineVersion: profile.baselineVersion ?? null,
+    sampleWindow: profile.baseline?.sampleWindow ?? null,
+    regulation: {
+      twoLegged: profile.regulation?.twoLegged ?? null,
+      extraTime: profile.regulation?.extraTime ?? null,
+      penalties: profile.regulation?.penalties ?? null,
+      neutralVenue: profile.regulation?.neutralVenue ?? null
+    }
+  };
+  return `profile-v1:${contentHash(relevant)}`;
+}
+
 export function recordPostmatch({ manifest, prediction, facts } = {}) {
   const predictionRunId = manifest?.runId;
   const predictionSha256 = manifest?.artifacts?.prediction?.sha256;
@@ -59,6 +95,7 @@ export function recordPostmatch({ manifest, prediction, facts } = {}) {
     throw new Error("manifest 的 prediction SHA-256 无效。");
   }
   const finalizedAt = isoTimestamp(manifest?.finalizedAt, "manifest.finalizedAt");
+  if (manifest?.mode && manifest.mode !== "prematch") throw new Error("赛后记录只能绑定已发布 prematch 运行。");
 
   if (typeof facts?.predictionRunId !== "string" || !facts.predictionRunId) {
     throw new Error("facts.predictionRunId 不能为空。");
@@ -87,32 +124,44 @@ export function recordPostmatch({ manifest, prediction, facts } = {}) {
   if (typeof sourceClaimId !== "string" || !sourceClaimId.trim()) {
     throw new Error("actualResult.sourceClaimId 不能为空。");
   }
-  const acceptedClaims = facts?.acceptedClaims ?? facts?.evidenceAudit?.accepted;
-  if (!Array.isArray(acceptedClaims)) {
-    throw new Error("facts 必须提供 acceptedClaims 或 evidenceAudit.accepted 以绑定 sourceClaimId。");
+  if (!Array.isArray(facts?.evidenceLedger)) {
+    throw new Error("facts.evidenceLedger 必须提供原始赛后证据并重新审计；不能信任调用方自报的 acceptedClaims。");
   }
-  const claims = new Map(acceptedClaims
+  if (!Number.isFinite(Date.parse(facts?.dataCutoffAt))) {
+    throw new Error("facts.dataCutoffAt 必须是有效赛后证据截止时间。");
+  }
+  const evidenceAudit = auditEvidenceLedger({
+    ledger: facts.evidenceLedger,
+    match: manifest.match,
+    cutoffAt: facts.dataCutoffAt
+  });
+  if (evidenceAudit.status === "failed") throw new Error("赛后证据重新审计失败。");
+  const claims = new Map(evidenceAudit.accepted
     .filter((claim) => typeof claim?.claimId === "string" && claim.claimId)
     .map((claim) => [claim.claimId, claim]));
   if (!boundClaim(result, claims, { topic: "result", kind: "result", manifest })) {
-    throw new Error("accepted claim 未严格匹配 sourceClaimId、result 主题、比赛身份和规范化赛果。");
+    throw new Error("重新审计后的 accepted claim 未严格匹配 sourceClaimId、result 主题、比赛身份和规范化赛果。");
   }
 
   const family = manifest?.competitionProfile?.family;
   const competitionId = manifest?.competitionProfile?.competitionId;
   if (!family || !competitionId) throw new Error("manifest 缺少赛事画像标识。");
   const publishedBeforeKickoff = finalizedAt < timestamp(kickoffAt, "manifest.match.kickoffAt");
-  const actualOutcome = homeGoals > awayGoals ? "home" : homeGoals === awayGoals ? "draw" : "away";
+  const resultClaim = claims.get(sourceClaimId);
+  const actual90 = ninetyMinuteResult(result);
+  const actualOutcome = outcomeFromScore(actual90);
 
   return cloneAndFreeze({
     predictionRunId,
     predictionSha256,
-    competitionProfileKey: `${family}:${competitionId}`,
+    competitionProfileKey: competitionProfileKey(manifest.competitionProfile),
+    competitionProfile: manifest.competitionProfile,
     matchId: manifest.match?.matchId ?? null,
     publishedBeforeKickoff,
     comparable: facts?.comparable !== false
       && prediction?.resultScope === "90min"
-      && decidedIn === "90min",
+      && actual90 !== null,
+    resultScope: "90min",
     probabilities: predictionProbabilities(prediction),
     actualOutcome,
     actualResult: {
@@ -120,7 +169,26 @@ export function recordPostmatch({ manifest, prediction, facts } = {}) {
       awayGoals,
       decidedIn: decidedIn ?? null,
       observedAt,
-      sourceClaimId
+      sourceClaimId,
+      ninetyMinuteResult: actual90
+    },
+    resultEvidence: {
+      claimId: resultClaim.claimId,
+      sourceTier: resultClaim.sourceTier,
+      sourceUrl: resultClaim.sourceUrl,
+      publishedAt: resultClaim.publishedAt,
+      observedAt: resultClaim.observedAt,
+      reviewStatus: resultClaim.reviewStatus
+    },
+    evidenceAudit: {
+      status: evidenceAudit.status,
+      acceptedClaimIds: evidenceAudit.accepted.map((claim) => claim.claimId),
+      rejectedClaimIds: evidenceAudit.rejected.map(({ claim }) => claim?.claimId).filter(Boolean)
+    },
+    dataQuality: {
+      predictionLineageVerified: true,
+      resultEvidenceAccepted: true,
+      uncontaminated: evidenceAudit.conflicts.length === 0
     }
   });
 }
@@ -149,24 +217,58 @@ function calibrationMetrics(records) {
 
 export function proposeCalibration(records) {
   if (!Array.isArray(records)) throw new Error("校准记录必须是数组。");
-  const competitionProfileKey = records.find((record) => record?.competitionProfileKey)?.competitionProfileKey ?? null;
-  const comparableRecords = records.filter((record) => (
-    record?.competitionProfileKey === competitionProfileKey
-    && record.publishedBeforeKickoff === true
-    && record.comparable === true
-    && OUTCOMES.includes(record.actualOutcome)
-    && validProbabilities(record.probabilities)
-  ));
+  const targetProfileKey = records.find((record) => record?.competitionProfileKey)?.competitionProfileKey ?? null;
+  const comparableRecords = [];
+  const dataQualityExclusions = [];
+  const seenRunIds = new Set();
+  const seenMatchIds = new Set();
+  records.forEach((record, index) => {
+    const reasons = [];
+    if (record?.competitionProfileKey !== targetProfileKey) reasons.push("赛事画像键不同");
+    if (!record?.competitionProfile
+      || competitionProfileKey(record.competitionProfile) !== record.competitionProfileKey) {
+      reasons.push("赛事画像键无法由完整画像复算");
+    }
+    if (typeof record?.predictionRunId !== "string" || !record.predictionRunId) reasons.push("predictionRunId 缺失");
+    if (!/^[a-f0-9]{64}$/i.test(record?.predictionSha256 ?? "")) reasons.push("predictionSha256 无效");
+    if (typeof record?.matchId !== "string" || !record.matchId) reasons.push("matchId 缺失");
+    if (record?.publishedBeforeKickoff !== true) reasons.push("不是赛前发布");
+    if (record?.comparable !== true || record?.resultScope !== "90min") reasons.push("90分钟可比较标志无效");
+    if (!OUTCOMES.includes(record?.actualOutcome)) reasons.push("actualOutcome 无效");
+    if (!validProbabilities(record?.probabilities)) reasons.push("概率无效");
+    const score90 = ninetyMinuteResult(record?.actualResult);
+    if (!score90 || outcomeFromScore(score90) !== record?.actualOutcome) reasons.push("90分钟赛果口径或方向不一致");
+    if (record?.dataQuality?.predictionLineageVerified !== true) reasons.push("预测谱系未验证");
+    if (record?.dataQuality?.resultEvidenceAccepted !== true) reasons.push("赛果证据未审计接受");
+    if (record?.dataQuality?.uncontaminated !== true) reasons.push("数据质量受污染");
+    if (reasons.length === 0 && (seenRunIds.has(record.predictionRunId) || seenMatchIds.has(record.matchId))) {
+      reasons.push("重复 predictionRunId 或 matchId");
+    }
+    if (reasons.length) {
+      dataQualityExclusions.push({
+        index,
+        predictionRunId: record?.predictionRunId ?? null,
+        matchId: record?.matchId ?? null,
+        reason: reasons.join("；")
+      });
+      return;
+    }
+    seenRunIds.add(record.predictionRunId);
+    seenMatchIds.add(record.matchId);
+    comparableRecords.push(record);
+  });
   const comparableSampleCount = comparableRecords.length;
   const eligible = comparableSampleCount >= 30;
 
   return {
     requiresHumanApproval: true,
     applyAutomatically: false,
-    competitionProfileKey,
+    competitionProfileKey: targetProfileKey,
     comparableSampleCount,
     eligibility: eligible ? "eligible_for_human_review" : "insufficient_sample",
     metrics: calibrationMetrics(comparableRecords),
+    excludedSampleCount: dataQualityExclusions.length,
+    dataQualityExclusions,
     proposedChanges: eligible
       ? ["复核该赛事画像的概率校准；仅在独立回测与人工批准后纳入新版本。"]
       : []

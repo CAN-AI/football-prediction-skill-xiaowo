@@ -65,13 +65,13 @@ description: 面向联赛、国内杯赛、洲际俱乐部赛事、国家队赛�
 ### 6. 发布不可变运行
 
 - 按固定顺序执行：加载输入 → 校验赛事画像 → 审计证据 → 写审计快照 → 计算预测 → 生成同源报告 → 渲染审计 → 计算 SHA-256 → 写最终清单。
-- `run-manifest.json` 必须绑定运行 ID、输入、审计快照、预测、Markdown、HTML、PNG 和渲染审计的路径与 SHA-256。
+- `run-manifest.json` 必须绑定运行 ID、独立证据账本、独立审计、输入快照、预测、Markdown、HTML、PNG 和渲染审计的固定路径、字节数与 SHA-256。
 - 发布后不得回写赛前预测、报告或哈希；新证据只能创建新快照、新运行和新的父子关系。
 
 ### 7. 赛后记录与校准
 
-- 赛果、事件和统计必须以 claim ID、topic、比赛身份及规范化值指纹绑定已接受证据。
-- 赛后记录引用原 `predictionRunId` 和预测 SHA-256，保留当时概率，不用实际结果改写旧预测。
+- 赛果、事件和统计必须以 claim ID、topic、比赛身份及规范化值指纹绑定本次重新审计后接受的证据；不信任调用方自报 accepted。
+- 正式赛后流程从父赛前目录复验全部文件，新建带 `parentRunId` 的 `postmatch` 清单与独立目录；引用原 `predictionRunId` 和预测 SHA-256，保留当时概率，不用实际结果改写旧预测。
 - 只有至少 **30 场**同赛事画像、赛前已发布且可比较的样本才可形成参数调整提案。
 - 所有提案必须 `requiresHumanApproval: true`、`applyAutomatically: false`；单场结果或不足 30 场时不得调参。
 
@@ -85,6 +85,12 @@ npm run test:v3
 node ./skills/football-prediction-skill-xiaowo/scripts/run-pipeline.mjs \
   --input ./skills/football-prediction-skill-xiaowo/assets/sample-data/club-league-snapshot.json \
   --out-dir ./.tmp-v3-pipeline
+
+# 正式赛后流水线（<prematch-run-dir> 是上一步生成的具体 runId 目录）
+node ./skills/football-prediction-skill-xiaowo/scripts/run-postmatch-pipeline.mjs \
+  --prematch-run-dir <prematch-run-dir> \
+  --input ./skills/football-prediction-skill-xiaowo/assets/sample-data/postmatch-input.json \
+  --out-dir ./.tmp-v3-postmatch
 
 # 从不可变赛后记录生成待人工审核的校准提案
 node ./skills/football-prediction-skill-xiaowo/scripts/propose-calibration.mjs \

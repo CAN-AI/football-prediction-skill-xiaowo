@@ -23,6 +23,7 @@
 - `audit`
 - `inputSnapshot`
 - `prediction`
+- `record`（仅 `postmatch` 正式发布必需）
 - `reportMarkdown`
 - `reportHtml`
 - `reportPng`
@@ -31,6 +32,8 @@
 产物生成后，只能通过 `appendArtifact(manifest, artifactName, artifact)` 在清单定稿前将已知槽位从 `null` 追加为 `{ "path": "固定相对路径", "sha256": "64 位十六进制 SHA-256", "byteLength": 123 }`。证据账本与独立审计必须分别落盘为 `evidence-ledger.json` 和 `audit.json`，并与快照、预测、报告、长图及渲染审计一起校验路径、字节数和哈希。该函数返回新的冻结清单，不改写输入清单；同名产物不得重复登记。直接写入 `artifacts` 会被拒绝。
 
 `finalizeRunManifest(manifest)` 返回带有非空 `finalizedAt` 的新冻结清单。它只锁定台账，不验证所有必需产物；完整发布校验由流水线负责。定稿后的清单不得追加产物。
+
+`postmatch` 清单必须有非空 `parentRunId`，并额外登记 `record.json`。赛后流水线复制父运行 `prediction.json` 的原始字节，因此父、子清单中的预测 SHA-256 必须一致；父目录和子目录均使用独占运行 ID，任何既有目录都拒绝覆写。
 
 ## 内容哈希
 

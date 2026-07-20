@@ -4,7 +4,8 @@ import { basename, join, resolve } from "node:path";
 import { auditEvidenceLedger } from "./evidence.mjs";
 import { MODEL_VERSION, predict90 } from "./model.mjs";
 import { renderLongPng } from "./render.mjs";
-import { buildPrematchReport } from "./report.mjs";
+import { buildPostmatchReport, buildPrematchReport } from "./report.mjs";
+import { recordPostmatch } from "./postmatch.mjs";
 import { appendArtifact, createRunManifest, finalizeRunManifest } from "./schema.mjs";
 import { contentHash } from "./utils.mjs";
 
@@ -18,6 +19,11 @@ const REQUIRED_ARTIFACTS = Object.freeze([
   ["inputSnapshot", "input-snapshot.json"],
   ["prediction", "prediction.json"]
 ]);
+const POSTMATCH_ARTIFACTS = Object.freeze([...REQUIRED_ARTIFACTS, ["record", "record.json"]]);
+
+function requiredArtifactsFor(run) {
+  return run?.mode === "postmatch" ? POSTMATCH_ARTIFACTS : REQUIRED_ARTIFACTS;
+}
 
 async function loadInput(input) {
   if (typeof input === "string" || input instanceof URL) {
@@ -99,7 +105,11 @@ function assertAuditedModelBindings({ manifest, snapshot, evidenceAudit }) {
 
 export function validatePublishedRun(run) {
   const errors = [];
-  for (const [artifactName, fileName] of REQUIRED_ARTIFACTS) {
+  if (run?.mode === "postmatch"
+    && (typeof run.parentRunId !== "string" || !run.parentRunId || run.parentRunId === run.runId)) {
+    errors.push("postmatch 运行必须绑定不同于自身的 parentRunId");
+  }
+  for (const [artifactName, fileName] of requiredArtifactsFor(run)) {
     const artifact = run?.artifacts?.[artifactName];
     if (!artifact
       || artifact.path !== fileName
@@ -144,7 +154,7 @@ export function finalizeManifest(manifest) {
     throw new Error("degraded_low_confidence 必须包含非空 missing 或 conflicts。");
   }
 
-  for (const [artifactName, fileName] of REQUIRED_ARTIFACTS) {
+  for (const [artifactName, fileName] of requiredArtifactsFor(manifest)) {
     const artifact = manifest?.artifacts?.[artifactName];
     if (!artifact) {
       throw new Error(`正式运行缺少 ${fileName} 及其 SHA-256 哈希。`);
@@ -276,4 +286,163 @@ export async function runPrematchPipeline({ input, outDir } = {}) {
   await writeJson(paths.manifest, manifest);
 
   return { manifest, runDirectory, paths };
+}
+
+async function loadPublishedPrematchRun(prematchRunDir) {
+  if (typeof prematchRunDir !== "string" || !prematchRunDir.trim()) {
+    throw new Error("postmatch 流水线必须提供 prematchRunDir。");
+  }
+  const runDirectory = resolve(prematchRunDir);
+  const manifest = JSON.parse(await readFile(join(runDirectory, "run-manifest.json"), "utf8"));
+  if (manifest.mode !== "prematch" || !manifest.finalizedAt) {
+    throw new Error("parentRun 必须是已经定稿的 prematch 运行。");
+  }
+  const publication = validatePublishedRun(manifest);
+  if (!publication.ok) throw new Error(`parentRun 发布校验失败：${publication.errors.join("；")}`);
+
+  for (const [artifactName, fileName] of REQUIRED_ARTIFACTS) {
+    const bytes = await readFile(join(runDirectory, fileName));
+    const artifact = manifest.artifacts[artifactName];
+    const actualSha256 = createHash("sha256").update(bytes).digest("hex");
+    if (bytes.byteLength !== artifact.byteLength || actualSha256 !== artifact.sha256) {
+      throw new Error(`parentRun 的 ${fileName} 字节数或 SHA-256 与 manifest 不匹配。`);
+    }
+  }
+
+  const predictionBytes = await readFile(join(runDirectory, "prediction.json"));
+  return { manifest, predictionBytes, prediction: JSON.parse(predictionBytes.toString("utf8")), runDirectory };
+}
+
+export async function runPostmatchPipeline({ prematchRunDir, input, outDir } = {}) {
+  const parentRun = await loadPublishedPrematchRun(prematchRunDir);
+  const loaded = await loadInput(input);
+  const ledger = evidenceLedgerFrom(loaded);
+  const dataCutoffAt = dataCutoffFrom(loaded);
+  if (!dataCutoffAt) throw new Error("postmatch 流水线必须显式提供 dataCutoffAt。");
+
+  let manifest = createRunManifest({
+    runId: loaded.manifest?.runId,
+    mode: "postmatch",
+    parentRunId: parentRun.manifest.runId,
+    modelVersion: parentRun.manifest.modelVersion,
+    dataCutoffAt,
+    competitionProfile: parentRun.manifest.competitionProfile,
+    match: parentRun.manifest.match
+  });
+  if (basename(manifest.runId) !== manifest.runId || !/^[A-Za-z0-9._-]+$/.test(manifest.runId)) {
+    throw new Error("runId 只能包含字母、数字、点、下划线和连字符。");
+  }
+
+  const evidenceAudit = auditEvidenceLedger({ ledger, match: manifest.match, cutoffAt: manifest.dataCutoffAt });
+  assertEvidenceAuditCompletable(evidenceAudit);
+  const postmatchInput = loaded.postmatch ?? loaded;
+  const actualResult = postmatchInput.actualResult ?? loaded.actualResult;
+  const record = recordPostmatch({
+    manifest: parentRun.manifest,
+    prediction: parentRun.prediction,
+    facts: {
+      predictionRunId: parentRun.manifest.runId,
+      predictionSha256: parentRun.manifest.artifacts.prediction.sha256,
+      dataCutoffAt: manifest.dataCutoffAt,
+      evidenceLedger: ledger,
+      actualResult,
+      comparable: postmatchInput.comparable
+    }
+  });
+
+  if (typeof outDir !== "string" || !outDir.trim()) throw new Error("流水线 outDir 不能为空。");
+  const outputRoot = resolve(outDir);
+  const runDirectory = join(outputRoot, manifest.runId);
+  await mkdir(outputRoot, { recursive: true });
+  try {
+    await mkdir(runDirectory);
+  } catch (error) {
+    if (error.code === "EEXIST") throw new Error(`运行目录已存在，拒绝覆写旧赛后运行：${runDirectory}`, { cause: error });
+    throw error;
+  }
+
+  const paths = {
+    evidenceLedger: join(runDirectory, "evidence-ledger.json"),
+    audit: join(runDirectory, "audit.json"),
+    inputSnapshot: join(runDirectory, "input-snapshot.json"),
+    prediction: join(runDirectory, "prediction.json"),
+    record: join(runDirectory, "record.json"),
+    reportMarkdown: join(runDirectory, "report.md"),
+    reportHtml: join(runDirectory, "report-long.html"),
+    reportPng: join(runDirectory, "report-long.png"),
+    renderAudit: join(runDirectory, "render-audit.json"),
+    manifest: join(runDirectory, "run-manifest.json")
+  };
+
+  await writeJson(paths.evidenceLedger, { match: manifest.match, cutoffAt: manifest.dataCutoffAt, ledger });
+  await writeJson(paths.audit, evidenceAudit);
+  await writeJson(paths.inputSnapshot, {
+    manifest,
+    parentRun: {
+      runId: parentRun.manifest.runId,
+      predictionSha256: parentRun.manifest.artifacts.prediction.sha256
+    },
+    postmatch: postmatchInput
+  });
+  await writeFile(paths.prediction, parentRun.predictionBytes);
+  await writeJson(paths.record, record);
+
+  const reportPostmatch = {
+    ...postmatchInput,
+    actualResult,
+    prematchBinding: {
+      runId: parentRun.manifest.runId,
+      predictionHash: parentRun.manifest.artifacts.prediction.sha256
+    },
+    noPosthocRewrite: { enforced: true, predictionHashUnchanged: true }
+  };
+  const report = buildPostmatchReport({ manifest, prediction: parentRun.prediction, evidenceAudit, postmatch: reportPostmatch });
+  await Promise.all([
+    writeFile(paths.reportMarkdown, report.markdown, "utf8"),
+    writeFile(paths.reportHtml, report.html, "utf8")
+  ]);
+  const renderAudit = await renderLongPng({ html: report.html, outputPath: paths.reportPng, auditPath: paths.renderAudit });
+  const renderErrors = renderAuditErrors(renderAudit);
+  if (renderErrors.length) throw new Error(`渲染审计失败：${renderErrors.join("；")}`);
+
+  const artifactFiles = Object.fromEntries(await Promise.all(
+    Object.entries(paths)
+      .filter(([name]) => name !== "manifest")
+      .map(async ([name, path]) => {
+        const bytes = await readFile(path);
+        return [name, {
+          sha256: createHash("sha256").update(bytes).digest("hex"),
+          byteLength: bytes.byteLength
+        }];
+      })
+  ));
+  const evidenceAuditSummary = {
+    status: evidenceAudit.status,
+    missing: evidenceAudit.missing,
+    conflicts: evidenceAudit.conflicts
+  };
+  for (const [artifactName, fileName] of POSTMATCH_ARTIFACTS) {
+    const metadata = artifactName === "audit"
+      ? { evidenceAudit: evidenceAuditSummary }
+      : artifactName === "renderAudit"
+        ? {
+            passed: true,
+            errors: [],
+            horizontalOverflow: renderAudit.horizontalOverflow,
+            tableOverflow: renderAudit.tableOverflow,
+            replacementCharacterDetected: renderAudit.replacementCharacterDetected,
+            pageHeightValid: renderAudit.pageHeightValid
+          }
+        : undefined;
+    manifest = appendArtifact(manifest, artifactName, {
+      path: fileName,
+      sha256: artifactFiles[artifactName].sha256,
+      byteLength: artifactFiles[artifactName].byteLength,
+      ...(metadata ? { metadata } : {})
+    });
+  }
+  manifest = finalizeManifest(manifest);
+  await writeJson(paths.manifest, manifest);
+
+  return { manifest, record, runDirectory, paths };
 }

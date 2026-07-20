@@ -3,10 +3,18 @@
     {
       "predictionRunId": "sample-prematch-001",
       "predictionSha256": "1111111111111111111111111111111111111111111111111111111111111111",
-      "competitionProfileKey": "league:ENG-PL",
+      "competitionProfile": {
+        "family": "league", "competitionId": "ENG-PL", "season": "2026-27", "level": "senior_professional", "stage": "regular_season",
+        "baselineVersion": "eng-pl-2026-27-r1",
+        "baseline": { "sampleWindow": { "from": "2025-08-01", "to": "2026-05-31", "matchCount": 380 } },
+        "regulation": { "twoLegged": false, "extraTime": false, "penalties": false, "neutralVenue": false }
+      },
+      "competitionProfileKey": "profile-v1:33980392b78185f2381abc17bab0f86b26bd5fff692f5327119b46a5e6fe6a59",
       "matchId": "sample-match-001",
       "publishedBeforeKickoff": true,
       "comparable": true,
+      "resultScope": "90min",
+      "dataQuality": { "predictionLineageVerified": true, "resultEvidenceAccepted": true, "uncontaminated": true },
       "probabilities": { "home": 0.52, "draw": 0.27, "away": 0.21 },
       "actualOutcome": "home",
       "actualResult": {
@@ -20,10 +28,18 @@
     {
       "predictionRunId": "sample-prematch-002",
       "predictionSha256": "2222222222222222222222222222222222222222222222222222222222222222",
-      "competitionProfileKey": "league:ENG-PL",
+      "competitionProfile": {
+        "family": "league", "competitionId": "ENG-PL", "season": "2026-27", "level": "senior_professional", "stage": "regular_season",
+        "baselineVersion": "eng-pl-2026-27-r1",
+        "baseline": { "sampleWindow": { "from": "2025-08-01", "to": "2026-05-31", "matchCount": 380 } },
+        "regulation": { "twoLegged": false, "extraTime": false, "penalties": false, "neutralVenue": false }
+      },
+      "competitionProfileKey": "profile-v1:33980392b78185f2381abc17bab0f86b26bd5fff692f5327119b46a5e6fe6a59",
       "matchId": "sample-match-002",
       "publishedBeforeKickoff": true,
       "comparable": true,
+      "resultScope": "90min",
+      "dataQuality": { "predictionLineageVerified": true, "resultEvidenceAccepted": true, "uncontaminated": true },
       "probabilities": { "home": 0.41, "draw": 0.31, "away": 0.28 },
       "actualOutcome": "draw",
       "actualResult": {
@@ -37,10 +53,18 @@
     {
       "predictionRunId": "sample-prematch-003",
       "predictionSha256": "3333333333333333333333333333333333333333333333333333333333333333",
-      "competitionProfileKey": "league:ENG-PL",
+      "competitionProfile": {
+        "family": "league", "competitionId": "ENG-PL", "season": "2026-27", "level": "senior_professional", "stage": "regular_season",
+        "baselineVersion": "eng-pl-2026-27-r1",
+        "baseline": { "sampleWindow": { "from": "2025-08-01", "to": "2026-05-31", "matchCount": 380 } },
+        "regulation": { "twoLegged": false, "extraTime": false, "penalties": false, "neutralVenue": false }
+      },
+      "competitionProfileKey": "profile-v1:33980392b78185f2381abc17bab0f86b26bd5fff692f5327119b46a5e6fe6a59",
       "matchId": "sample-match-003",
       "publishedBeforeKickoff": true,
       "comparable": true,
+      "resultScope": "90min",
+      "dataQuality": { "predictionLineageVerified": true, "resultEvidenceAccepted": true, "uncontaminated": true },
       "probabilities": { "home": 0.36, "draw": 0.29, "away": 0.35 },
       "actualOutcome": "away",
       "actualResult": {

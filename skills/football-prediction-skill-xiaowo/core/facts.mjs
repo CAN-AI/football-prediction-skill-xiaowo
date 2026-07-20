@@ -21,11 +21,18 @@ export function canonicalFact(kind, value = {}) {
   if (kind === "result") {
     if (!Number.isInteger(value.homeGoals) || value.homeGoals < 0
       || !Number.isInteger(value.awayGoals) || value.awayGoals < 0) return null;
+    const ninetyMinuteSource = value.ninetyMinuteResult ?? value.result90min ?? value.regulationResult;
+    const ninetyMinuteResult = ninetyMinuteSource
+      && Number.isInteger(ninetyMinuteSource.homeGoals) && ninetyMinuteSource.homeGoals >= 0
+      && Number.isInteger(ninetyMinuteSource.awayGoals) && ninetyMinuteSource.awayGoals >= 0
+      ? { homeGoals: ninetyMinuteSource.homeGoals, awayGoals: ninetyMinuteSource.awayGoals }
+      : null;
     return {
       homeGoals: value.homeGoals,
       awayGoals: value.awayGoals,
       decidedIn: value.decidedIn ?? null,
-      observedAt: value.observedAt ?? null
+      observedAt: value.observedAt ?? null,
+      ninetyMinuteResult
     };
   }
   if (kind === "event") {

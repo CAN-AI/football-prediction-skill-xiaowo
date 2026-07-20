@@ -399,6 +399,8 @@ test("报告 CLI 自动识别结构化 postmatch 夹具", async () => {
   const outputDirectory = await mkdtemp(join(tmpdir(), "football-postmatch-cli-"));
   const fixturePath = join(outputDirectory, "postmatch-fixture.json");
   const fixture = JSON.parse(await readFile(new URL("../assets/sample-data/club-league-snapshot.json", import.meta.url), "utf8"));
+  fixture.manifest.mode = "postmatch";
+  fixture.manifest.parentRunId = "prematch-cli-run";
   fixture.evidenceAudit.accepted = [{
     claimId: "result-cli-1",
     topic: "result",

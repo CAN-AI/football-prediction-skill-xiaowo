@@ -6,6 +6,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { promisify } from "node:util";
+import { auditEvidenceLedger } from "../core/evidence.mjs";
 import { buildPostmatchReport, buildPrematchReport } from "../core/report.mjs";
 import { assertRendererAvailable, renderLongPng } from "../core/render.mjs";
 
@@ -159,25 +160,128 @@ test("无已接受来源绑定的赛果保持未提供", () => {
   assert.doesNotMatch(report.markdown, /2–1/);
 });
 
-test("赛后报告显示来源绑定事实并按完整复盘顺序输出治理状态", () => {
-  const predictionHash = "a".repeat(64);
+test("伤停 claim 不能授权伪造赛果", () => {
   const report = buildPostmatchReport({
-    manifest: { match: { homeTeamName: "阿森纳", awayTeamName: "切尔西" } },
-    prediction: { modelVersion: "model-v3", homeWinProb: 0.45, drawProb: 0.28, awayWinProb: 0.27 },
+    manifest: { match: { matchId: "ARS-CHE-2026-08-01", homeTeamId: "ARS", awayTeamId: "CHE" } },
+    prediction: { homeWinProb: 0.45, drawProb: 0.28, awayWinProb: 0.27 },
     evidenceAudit: {
-      status: "passed",
-      missing: [],
-      conflicts: [],
+      accepted: [{
+        claimId: "injury-1",
+        topic: "injury",
+        subject: "ARS-CHE-2026-08-01",
+        value: { homeGoals: 9, awayGoals: 0, decidedIn: "90min", observedAt: "2026-08-01T17:00:00Z" }
+      }]
+    },
+    postmatch: { actualResult: { homeGoals: 9, awayGoals: 0, decidedIn: "90min", observedAt: "2026-08-01T17:00:00Z", sourceClaimId: "injury-1" } }
+  });
+
+  assert.match(report.markdown, /实际赛果：未提供/);
+  assert.doesNotMatch(report.markdown, /9–0/);
+});
+
+test("相同 result claimId 的不同比分不能授权展示", () => {
+  const report = buildPostmatchReport({
+    manifest: { match: { matchId: "ARS-CHE-2026-08-01", homeTeamId: "ARS", awayTeamId: "CHE" } },
+    prediction: { homeWinProb: 0.45, drawProb: 0.28, awayWinProb: 0.27 },
+    evidenceAudit: {
+      accepted: [{
+        claimId: "result-1",
+        topic: "result",
+        subject: "ARS-CHE-2026-08-01",
+        value: { homeGoals: 1, awayGoals: 0, decidedIn: "90min", observedAt: "2026-08-01T17:00:00Z" }
+      }]
+    },
+    postmatch: { actualResult: { homeGoals: 2, awayGoals: 0, decidedIn: "90min", observedAt: "2026-08-01T17:00:00Z", sourceClaimId: "result-1" } }
+  });
+
+  assert.match(report.markdown, /实际赛果：未提供/);
+  assert.doesNotMatch(report.markdown, /2–0/);
+});
+
+test("比赛身份不符的事件与值不符的统计不能展示", () => {
+  const report = buildPostmatchReport({
+    manifest: { match: { matchId: "ARS-CHE-2026-08-01", homeTeamId: "ARS", awayTeamId: "CHE" } },
+    prediction: {},
+    evidenceAudit: {
       accepted: [
-        { claimId: "result-1", topic: "result", subject: "正式赛果", sourceUrl: "https://official.test/result" },
-        { claimId: "event-1", topic: "statistics", subject: "第18分钟进球", sourceUrl: "https://official.test/events" },
-        { claimId: "stats-1", topic: "statistics", subject: "全场射门", sourceUrl: "https://provider.test/stats" }
+        {
+          claimId: "event-1",
+          topic: "event",
+          subject: "OTHER-MATCH",
+          value: { minute: 18, event: "虚构事件", teamId: "ARS" }
+        },
+        {
+          claimId: "stats-1",
+          topic: "statistics",
+          subject: "ARS-CHE-2026-08-01",
+          value: { metric: "射门", home: 14, away: 8, definition: "官方全场射门口径" }
+        }
       ]
     },
     postmatch: {
+      eventTimeline: [{ minute: 18, event: "虚构事件", teamId: "ARS", sourceClaimId: "event-1" }],
+      processStatistics: [{ metric: "射门", home: 999, away: 8, definition: "虚构统计口径", sourceClaimId: "stats-1" }]
+    }
+  });
+
+  assert.match(report.markdown, /事件时间线：未提供/);
+  assert.match(report.markdown, /过程统计：未提供/);
+  assert.doesNotMatch(report.markdown, /999|虚构事件|虚构统计口径/);
+});
+
+test("赛后报告显示来源绑定事实并按完整复盘顺序输出治理状态", () => {
+  const predictionHash = "a".repeat(64);
+  const match = {
+    matchId: "ARS-CHE-2026-08-01",
+    homeTeamId: "ARS",
+    awayTeamId: "CHE",
+    homeTeamName: "阿森纳",
+    awayTeamName: "切尔西",
+    kickoffAt: "2026-08-01T15:00:00Z"
+  };
+  const claimDefaults = {
+    subject: match.matchId,
+    sourceUrl: "https://official.test/fact",
+    publishedAt: "2026-08-01T17:00:00Z",
+    observedAt: "2026-08-01T17:00:00Z",
+    affectsModel: true,
+    reviewStatus: "accepted"
+  };
+  const evidenceAudit = auditEvidenceLedger({
+    match,
+    cutoffAt: "2026-08-01T18:00:00Z",
+    ledger: [
+      {
+        ...claimDefaults,
+        claimId: "result-1",
+        topic: "result",
+        sourceTier: "organizer",
+        value: { homeGoals: 2, awayGoals: 1, decidedIn: "90min", observedAt: "2026-08-01T17:00:00Z" }
+      },
+      {
+        ...claimDefaults,
+        claimId: "event-1",
+        topic: "event",
+        sourceTier: "data_provider",
+        value: { minute: 18, event: "阿森纳进球", teamId: "ARS" }
+      },
+      {
+        ...claimDefaults,
+        claimId: "stats-1",
+        topic: "statistics",
+        sourceTier: "data_provider",
+        value: { metric: "射门", home: 14, away: 8, definition: "官方全场射门口径" }
+      }
+    ]
+  });
+  const report = buildPostmatchReport({
+    manifest: { match },
+    prediction: { modelVersion: "model-v3", homeWinProb: 0.45, drawProb: 0.28, awayWinProb: 0.27 },
+    evidenceAudit,
+    postmatch: {
       prematchBinding: { runId: "prematch-run-42", predictionHash },
       actualResult: { homeGoals: 2, awayGoals: 1, decidedIn: "90min", observedAt: "2026-08-01T17:00:00Z", sourceClaimId: "result-1" },
-      eventTimeline: [{ minute: 18, event: "阿森纳进球", sourceClaimId: "event-1" }],
+      eventTimeline: [{ minute: 18, event: "阿森纳进球", teamId: "ARS", sourceClaimId: "event-1" }],
       processStatistics: [{ metric: "射门", home: 14, away: 8, definition: "官方全场射门口径", sourceClaimId: "stats-1" }],
       calibrationMetrics: { brierScore: 0.31, logLoss: 0.8, sampleSize: 1 },
       noPosthocRewrite: { enforced: true, predictionHashUnchanged: true },
@@ -295,7 +399,13 @@ test("报告 CLI 自动识别结构化 postmatch 夹具", async () => {
   const outputDirectory = await mkdtemp(join(tmpdir(), "football-postmatch-cli-"));
   const fixturePath = join(outputDirectory, "postmatch-fixture.json");
   const fixture = JSON.parse(await readFile(new URL("../assets/sample-data/club-league-snapshot.json", import.meta.url), "utf8"));
-  fixture.evidenceAudit.accepted = [{ claimId: "result-cli-1", topic: "result", subject: "正式赛果", sourceUrl: "https://official.test/result" }];
+  fixture.evidenceAudit.accepted = [{
+    claimId: "result-cli-1",
+    topic: "result",
+    subject: "ARS-CHE-2026-08-01",
+    sourceUrl: "https://official.test/result",
+    value: { homeGoals: 1, awayGoals: 0, decidedIn: "90min", observedAt: null }
+  }];
   fixture.postmatch = {
     prematchBinding: { runId: "prematch-cli-run", predictionHash: "b".repeat(64) },
     actualResult: { homeGoals: 1, awayGoals: 0, decidedIn: "90min", sourceClaimId: "result-cli-1" }

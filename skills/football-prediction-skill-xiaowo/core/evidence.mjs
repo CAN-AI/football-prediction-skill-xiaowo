@@ -6,7 +6,9 @@ const TOPIC_AUTHORITIES = Object.freeze({
   statistics: ["official", "competition_official", "data_provider"],
   xg: ["data_provider"],
   weather: ["weather_provider", "official"],
-  market: ["market_exchange", "market_provider", "data_provider"]
+  market: ["market_exchange", "market_provider", "data_provider"],
+  result: ["official", "competition_official", "governing_body", "organizer", "federation", "data_provider"],
+  event: ["official", "competition_official", "governing_body", "organizer", "federation", "data_provider"]
 });
 
 const FORBIDDEN_SOURCE_TIERS = new Set(["social", "self_media", "unknown"]);

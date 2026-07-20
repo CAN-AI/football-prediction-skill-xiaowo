@@ -235,6 +235,32 @@ test("已确认的官方首发可进入模型", () => {
   assert.equal(audit.dataConfidence.level, "high");
 });
 
+test("正式赛果和比赛事件可由对应权威来源进入审计", () => {
+  const audit = auditEvidenceLedger({
+    ledger: [
+      acceptedClaim({
+        claimId: "result-1",
+        topic: "result",
+        subject: "ARS-CHE-2026-08-01",
+        sourceTier: "organizer",
+        value: { homeGoals: 1, awayGoals: 0, decidedIn: "90min", observedAt: "2026-08-01T17:00:00Z" }
+      }),
+      acceptedClaim({
+        claimId: "event-1",
+        topic: "event",
+        subject: "ARS-CHE-2026-08-01",
+        sourceTier: "data_provider",
+        value: { minute: 18, event: "阿森纳进球", teamId: "ARS" }
+      })
+    ],
+    match,
+    cutoffAt: "2026-08-01T18:00:00Z"
+  });
+
+  assert.equal(audit.status, "passed");
+  assert.deepEqual(audit.accepted.map((item) => item.claimId), ["result-1", "event-1"]);
+});
+
 test("审计 CLI 写入包含状态和数据置信度的 JSON", () => {
   const temporaryDirectory = mkdtempSync(join(tmpdir(), "football-evidence-"));
   const outputPath = join(temporaryDirectory, "audit.json");

@@ -84,7 +84,14 @@ Markdown 与 HTML 由 `core/report.mjs` 中同一个章节文档生成。PNG 只
 }
 ```
 
-`actualResult`、`eventTimeline` 和 `processStatistics` 的每一项都必须以 `sourceClaimId`（或同名 `claimId`）绑定 `evidenceAudit.accepted` 中的 claim。赛果 claim 若带结构化比分，其比分还必须与 `actualResult` 相同。绑定缺失、指向未接受 claim 或比分冲突时，对应事实全部显示“未提供”，不得泄露原始数值。运行绑定、校准、回写治理、修正提案和人工批准字段缺失时同样明确显示“未提供”。
+`actualResult`、`eventTimeline` 和 `processStatistics` 的每一项都必须通过四重门禁：
+
+1. `sourceClaimId`（或同名 `claimId`）精确指向 `evidenceAudit.accepted` 中的 claim；
+2. topic 分别严格为 `result`、`event`、`statistics`，不接受 `injury`、`lineup` 等相邻主题替代；
+3. claim 的 `matchId` / `match.matchId` / `subject` 必须精确匹配报告比赛；有 `manifest.match.matchId` 时只接受该 ID，没有时才接受固定的主客 ID 或主客名称组合；
+4. claim 的结构化 `value` 与准备展示的事实分别规范化为固定键对象并计算 SHA-256 指纹，指纹必须完全相同；claim 若自带 `factFingerprint`，它也必须等于由其 `value` 重新计算的指纹。
+
+规范化赛果值包含 `homeGoals`、`awayGoals`、`decidedIn`、`observedAt`；事件值包含 `minute`、`occurredAt`、`event`、`teamId`、`teamName`；过程统计值包含 `metric`、`home`、`away`、`definition`。绑定缺失、主题错误、比赛身份不符或任一规范化字段不同时，对应事实全部显示“未提供”，不得泄露原始数值。运行绑定、校准、回写治理、修正提案和人工批准字段缺失时同样明确显示“未提供”。
 
 ## 视觉系统
 

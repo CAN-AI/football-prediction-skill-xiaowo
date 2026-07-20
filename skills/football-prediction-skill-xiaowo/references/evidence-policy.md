@@ -1,6 +1,6 @@
 # V3 证据审计策略
 
-本策略用于赛前结构化证据账本，不提供竞猜、投注或投资建议。账本中的事实必须可回溯到公开、可访问的来源；无网络、付费墙、来源冲突或无法确认时，审计结果必须列出缺失字段并降级，不能补写或猜测事实。
+本策略用于赛前及赛后结构化证据账本，不提供竞猜、投注或投资建议。账本中的事实必须可回溯到公开、可访问的来源；无网络、付费墙、来源冲突或无法确认时，审计结果必须列出缺失字段并降级，不能补写或猜测事实。
 
 ## 来源权威性
 
@@ -13,8 +13,12 @@
 | `xg` | `data_provider` |
 | `weather` | `weather_provider`、`official` |
 | `market` | `market_exchange`、`market_provider`、`data_provider` |
+| `result` | `official`、`competition_official`、`governing_body`、`organizer`、`federation`、`data_provider` |
+| `event` | `official`、`competition_official`、`governing_body`、`organizer`、`federation`、`data_provider` |
 
 `social`、`self_media` 和 `unknown` 永不进入模型。所有入模证据必须具有 `reviewStatus: "accepted"`、`affectsModel: true`、`sourceUrl`、`publishedAt` 与 `observedAt`；发布时间或观察时间晚于 `cutoffAt` 的证据也不得入模。
+
+赛后报告对 `result`、`event` 和 `statistics` 另有严格绑定：claim ID、topic、比赛身份以及规范化 `value` 指纹必须同时匹配报告准备展示的事实；仅通过本层来源权威审计并不自动授权任意报告值。
 
 ## 首发、冲突与降级
 

@@ -1,3 +1,5 @@
+import { contentHash } from "./utils.mjs";
+
 const REPORT_CSS = String.raw`
 :root{color-scheme:light;--navy:#071b36;--navy2:#0a2a52;--navy3:#123f73;--blue:#e8f3ff;--line:#c8d9ec;--ink:#132238;--muted:#58708c;--green:#e5f6ed;--red:#ffebed;--gold:#fff4d5;--formula:#0b1729}
 *{box-sizing:border-box}
@@ -231,14 +233,70 @@ function acceptedClaimMap(audit = {}) {
   return new Map(acceptedClaims(audit).filter((claim) => typeof claim?.claimId === "string" && claim.claimId).map((claim) => [claim.claimId, claim]));
 }
 
-function boundClaim(item, claims) {
+function matchIdentities(manifest = {}) {
+  const match = manifest.match ?? {};
+  if (typeof match.matchId === "string" && match.matchId) return new Set([match.matchId]);
+  const identities = [
+    match.homeTeamId && match.awayTeamId ? `${match.homeTeamId}-${match.awayTeamId}` : null,
+    match.homeTeamId && match.awayTeamId ? `${match.homeTeamId} vs ${match.awayTeamId}` : null,
+    match.homeTeamName && match.awayTeamName ? `${match.homeTeamName}-${match.awayTeamName}` : null,
+    match.homeTeamName && match.awayTeamName ? `${match.homeTeamName} vs ${match.awayTeamName}` : null
+  ].filter(Boolean);
+  return new Set(identities);
+}
+
+function claimMatchesReportMatch(claim, manifest) {
+  const identity = claim?.matchId ?? claim?.match?.matchId ?? claim?.subject;
+  return typeof identity === "string" && matchIdentities(manifest).has(identity);
+}
+
+function canonicalFact(kind, value = {}) {
+  if (!value || typeof value !== "object") return null;
+  if (kind === "result") {
+    if (!Number.isInteger(value.homeGoals) || value.homeGoals < 0 || !Number.isInteger(value.awayGoals) || value.awayGoals < 0) return null;
+    return {
+      homeGoals: value.homeGoals,
+      awayGoals: value.awayGoals,
+      decidedIn: value.decidedIn ?? null,
+      observedAt: value.observedAt ?? null
+    };
+  }
+  if (kind === "event") {
+    if (typeof (value.event ?? value.description) !== "string" || !(value.event ?? value.description).trim()) return null;
+    return {
+      minute: Number.isFinite(value.minute) ? value.minute : null,
+      occurredAt: value.occurredAt ?? null,
+      event: value.event ?? value.description,
+      teamId: value.teamId ?? null,
+      teamName: value.teamName ?? null
+    };
+  }
+  if (kind === "statistics") {
+    if (typeof value.metric !== "string" || !value.metric.trim()) return null;
+    return {
+      metric: value.metric,
+      home: value.home ?? null,
+      away: value.away ?? null,
+      definition: value.definition ?? value.metricDefinition ?? null
+    };
+  }
+  return null;
+}
+
+function factFingerprint(kind, value) {
+  const canonical = canonicalFact(kind, value);
+  return canonical ? contentHash({ kind, value: canonical }) : null;
+}
+
+function boundClaim(item, claims, { topic, kind, manifest }) {
   const claimId = item?.sourceClaimId ?? item?.claimId;
   if (typeof claimId !== "string" || !claimId) return null;
   const claim = claims.get(claimId);
-  if (!claim) return null;
-  const claimResult = claim.value ?? claim.result;
-  if (claimResult && Number.isInteger(claimResult.homeGoals) && claimResult.homeGoals !== item.homeGoals) return null;
-  if (claimResult && Number.isInteger(claimResult.awayGoals) && claimResult.awayGoals !== item.awayGoals) return null;
+  if (!claim || claim.topic !== topic || !claimMatchesReportMatch(claim, manifest)) return null;
+  const displayedFingerprint = factFingerprint(kind, item);
+  const acceptedFingerprint = factFingerprint(kind, claim.value);
+  if (!displayedFingerprint || !acceptedFingerprint || displayedFingerprint !== acceptedFingerprint) return null;
+  if (claim.factFingerprint && claim.factFingerprint !== acceptedFingerprint) return null;
   return claim;
 }
 
@@ -255,8 +313,8 @@ function predictedOutcome(prediction = {}) {
   return values[0]?.[0] ?? null;
 }
 
-function timelineBlocks(items, claims) {
-  const accepted = Array.isArray(items) ? items.filter((item) => boundClaim(item, claims)) : [];
+function timelineBlocks(items, claims, manifest) {
+  const accepted = Array.isArray(items) ? items.filter((item) => boundClaim(item, claims, { topic: "event", kind: "event", manifest })) : [];
   if (!accepted.length) return [paragraph("事件时间线：未提供。")];
   return [table(["时间", "事件", "球队", "来源证据"], accepted.map((item) => [
     Number.isFinite(item.minute) ? `${item.minute}′` : text(item.occurredAt),
@@ -266,8 +324,8 @@ function timelineBlocks(items, claims) {
   ]))];
 }
 
-function statisticsBlocks(items, claims) {
-  const accepted = Array.isArray(items) ? items.filter((item) => boundClaim(item, claims)) : [];
+function statisticsBlocks(items, claims, manifest) {
+  const accepted = Array.isArray(items) ? items.filter((item) => boundClaim(item, claims, { topic: "statistics", kind: "statistics", manifest })) : [];
   if (!accepted.length) return [paragraph("过程统计：未提供。"), paragraph("来源口径：未提供。")];
   return [table(["指标", "主队", "客队", "来源口径", "来源证据"], accepted.map((item) => [
     text(item.metric), text(item.home), text(item.away), text(item.definition ?? item.metricDefinition), text(item.sourceClaimId ?? item.claimId)
@@ -310,7 +368,7 @@ function postmatchDocument(data = {}) {
   const binding = postmatch.prematchBinding ?? {};
   const claims = acceptedClaimMap(evidenceAudit);
   const candidateResult = postmatch.actualResult ?? data.actualResult ?? data.record ?? data.result ?? {};
-  const actual = boundClaim(candidateResult, claims) ? candidateResult : {};
+  const actual = boundClaim(candidateResult, claims, { topic: "result", kind: "result", manifest }) ? candidateResult : {};
   const teams = teamNames(manifest);
   const outcome = actualOutcome(actual);
   const resultLine = outcome ? `实际赛果：${teams.home} ${actual.homeGoals}–${actual.awayGoals} ${teams.away}（${text(actual.decidedIn)}）` : "实际赛果：未提供。";
@@ -325,8 +383,8 @@ function postmatchDocument(data = {}) {
     meta: `复盘口径：90分钟 · 原预测模型：${text(prediction.modelVersion)}`,
     sections: [
       section("赛前运行绑定", runId && predictionHash ? "blue" : "red", [list([`赛前运行 ID：${text(runId)}`, `预测产物哈希：${text(predictionHash)}`])]),
-      section("赛果事实与事件时间线", outcome ? "green" : "red", [paragraph(resultLine), paragraph(`赛果观察时间：${outcome ? text(actual.observedAt) : "未提供"}`), paragraph(`赛果来源证据：${outcome ? text(actual.sourceClaimId ?? actual.claimId) : "未提供"}`), ...timelineBlocks(postmatch.eventTimeline, claims)]),
-      section("过程统计与来源口径", "blue", statisticsBlocks(postmatch.processStatistics, claims)),
+      section("赛果事实与事件时间线", outcome ? "green" : "red", [paragraph(resultLine), paragraph(`赛果观察时间：${outcome ? text(actual.observedAt) : "未提供"}`), paragraph(`赛果来源证据：${outcome ? text(actual.sourceClaimId ?? actual.claimId) : "未提供"}`), ...timelineBlocks(postmatch.eventTimeline, claims, manifest)]),
+      section("过程统计与来源口径", "blue", statisticsBlocks(postmatch.processStatistics, claims, manifest)),
       section("预测命中审计", "formula", [table(["项目", "值"], [
         ["赛前最高概率结果", text(forecast)],
         ["实际90分钟结果", text(outcome)],

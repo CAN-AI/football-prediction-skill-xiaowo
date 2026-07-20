@@ -3,7 +3,7 @@
 ## 结论
 
 - legacy 单元测试通过：12/12。
-- v3 测试通过：90/90。
+- v3 测试通过：92/92。
 - 俱乐部联赛样例完成端到端生成；Markdown、HTML、PNG、审计、预测、审计快照和运行清单均非空。
 - Chromium 渲染审计通过：无水平溢出、无表格溢出、无替换字符，PNG 非空。
 - MiniMax 本地认证状态有效，但独立文本调用因网络请求失败而退出；外部兼容性**未通过**，记录为外部网络限制。
@@ -24,8 +24,8 @@ npm run test:v3
 
 | 套件 | tests | pass | fail | duration |
 |---|---:|---:|---:|---:|
-| legacy `test:unit` | 12 | 12 | 0 | 475.5312 ms |
-| v3 `test:v3` | 90 | 90 | 0 | 9068.5306 ms |
+| legacy `test:unit` | 12 | 12 | 0 | 573.3919 ms |
+| v3 `test:v3` | 92 | 92 | 0 | 8774.8531 ms |
 
 Task 9 严格 TDD 证据：
 
@@ -48,25 +48,47 @@ Task 9 严格 TDD 证据：
 
 兼容边界：`validatePublishedRun(run)`、`finalizeManifest(manifest)` 和 `runPrematchPipeline(options)` 的签名与返回结构不变；实际 `renderAudit` artifact 的 metadata 在原 `{passed,errors}` 基础上增补四个审计字段。旧的不完整 metadata 现在不能发布，这是有意的安全收紧。
 
+### 残留 P1/P2 路径与错误清单修复（2026-07-21）
+
+复审进一步确认旧门禁会同时放行绝对路径、`..` 目录穿越、错误/重复 artifact 映射以及 `passed=true` 但 `metadata.errors` 非空的矛盾审计。
+
+修复采用两轮 RED/GREEN：
+
+1. 固定 tuple 路径与六项哈希 RED：2 个失败、17 个通过；validator 改为遍历同一权威 tuple，要求六项 `path` 精确等于固定相对文件名、每项 SHA-256 均为 64hex，GREEN 19/19。
+2. errors 一致性 RED：1 个失败、19 个通过；要求 `renderAudit.metadata.errors` 必须是空数组，GREEN 20/20。
+
+六项固定 tuple 为：
+
+```plaintext
+inputSnapshot  input-snapshot.json
+prediction     prediction.json
+reportMarkdown report.md
+reportHtml     report-long.html
+reportPng      report-long.png
+renderAudit    render-audit.json
+```
+
+精确文件名相等同时拒绝绝对路径、任意路径分隔符、`..` 路径段、错误文件名和重复映射。输入 artifact 字段名仍为 `inputSnapshot`；落盘文件名由旧的 `audited-snapshot.json` 收紧为 `input-snapshot.json`。
+
 ## 端到端流水线与渲染审计
 
 ```powershell
 node skills/football-prediction-skill-xiaowo/scripts/run-pipeline.mjs `
   --input skills/football-prediction-skill-xiaowo/assets/sample-data/club-league-snapshot.json `
-  --out-dir .tmp-v3-p1
+  --out-dir .tmp-v3-pathgate
 ```
 
-退出码：`0`。运行 ID：`3d2a6803-08d6-4478-a274-baa3987fd847`。对落盘 manifest 再调用 `validatePublishedRun`，结果为 `{ "ok": true, "errors": [] }`。
+退出码：`0`。运行 ID：`7096205a-d2f3-405f-973c-7c4193fcfb1c`。对落盘 manifest 再调用 `validatePublishedRun`，结果为 `{ "ok": true, "errors": [] }`。
 
 | 产物 | 字节数 |
 |---|---:|
-| `audited-snapshot.json` | 1,669 |
+| `input-snapshot.json` | 1,669 |
 | `prediction.json` | 7,245 |
-| `render-audit.json` | 563 |
+| `render-audit.json` | 569 |
 | `report.md` | 2,077 |
 | `report-long.html` | 8,189 |
 | `report-long.png` | 185,975 |
-| `run-manifest.json` | 2,108 |
+| `run-manifest.json` | 2,106 |
 
 渲染审计的关键原始值：
 
@@ -90,7 +112,7 @@ node skills/football-prediction-skill-xiaowo/scripts/run-pipeline.mjs `
 ```json
 {
   "path": "render-audit.json",
-  "sha256": "48dd21ee68cd793b84539e26fb3776a3b932f98bda261b085693f044a8ba75ab",
+  "sha256": "4fc354872f5d1196d2006dab50a6277b6c613b83aa2d424ced3602e8cdb6c440",
   "metadata": {
     "passed": true,
     "errors": [],

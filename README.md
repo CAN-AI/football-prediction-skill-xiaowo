@@ -77,7 +77,7 @@ node ./skills/football-prediction-skill-xiaowo/scripts/run-pipeline.mjs \
   --out-dir ./.tmp-v3-pipeline
 ```
 
-流水线按“输入加载 → 赛事画像与清单校验 → 证据审计 → 审计快照 → 90 分钟预测 → 同源 Markdown/HTML 报告 → PNG 长图与渲染审计 → SHA-256 → 最终清单”的固定顺序运行。每次运行写入 `<out-dir>/<runId>/`；同名运行目录已存在时会直接失败，不覆写旧预测。正式完成要求 `audited-snapshot.json`、`prediction.json`、`report.md`、`report-long.html`、`report-long.png` 和 `render-audit.json` 全部存在、带 SHA-256，且渲染审计无错误，最终索引写入 `run-manifest.json`。
+流水线按“输入加载 → 赛事画像与清单校验 → 证据审计 → 审计快照 → 90 分钟预测 → 同源 Markdown/HTML 报告 → PNG 长图与渲染审计 → SHA-256 → 最终清单”的固定顺序运行。每次运行写入 `<out-dir>/<runId>/`；同名运行目录已存在时会直接失败，不覆写旧预测。正式完成要求 `input-snapshot.json`、`prediction.json`、`report.md`、`report-long.html`、`report-long.png` 和 `render-audit.json` 全部使用固定相对文件名、带 SHA-256，且渲染审计无错误，最终索引写入 `run-manifest.json`。
 
 ### v3 验证与打包
 

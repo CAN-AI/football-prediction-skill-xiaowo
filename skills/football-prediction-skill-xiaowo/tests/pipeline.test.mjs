@@ -24,7 +24,7 @@ const CLEAN_RENDER_METADATA = Object.freeze({
 function completeManifest(overrides = {}) {
   return {
     artifacts: {
-      inputSnapshot: { path: "audited-snapshot.json", sha256: SHA256 },
+      inputSnapshot: { path: "input-snapshot.json", sha256: SHA256 },
       prediction: { path: "prediction.json", sha256: SHA256 },
       reportMarkdown: { path: "report.md", sha256: SHA256 },
       reportHtml: { path: "report-long.html", sha256: SHA256 },
@@ -35,17 +35,28 @@ function completeManifest(overrides = {}) {
   };
 }
 
-test("发布验证读取真实产物记录并拒绝缺失路径或非 SHA-256 哈希", () => {
-  const invalidManifests = [
-    completeManifest({ reportMarkdown: { path: "", sha256: SHA256 } }),
-    completeManifest({ reportPng: { path: "report-long.png", sha256: "b" } }),
-    completeManifest({
-      renderAudit: { path: "render-audit.json", sha256: "c", metadata: CLEAN_RENDER_METADATA }
-    })
+test("发布验证要求六个产物使用固定相对文件名", () => {
+  const invalidPaths = [
+    ["reportMarkdown", "C:\\outside\\report.md"],
+    ["reportPng", "..\\outside.png"],
+    ["renderAudit", "report.md"],
+    ["inputSnapshot", "audited-snapshot.json"]
   ];
 
-  for (const manifest of invalidManifests) {
+  for (const [artifactName, path] of invalidPaths) {
+    const manifest = completeManifest();
+    manifest.artifacts[artifactName] = { ...manifest.artifacts[artifactName], path };
     assert.equal(validatePublishedRun(manifest).ok, false);
+    assert.throws(() => finalizeManifest(manifest), /path/);
+  }
+});
+
+test("发布验证要求六个产物各自带有效 SHA-256", () => {
+  for (const artifactName of Object.keys(completeManifest().artifacts)) {
+    const manifest = completeManifest();
+    manifest.artifacts[artifactName] = { ...manifest.artifacts[artifactName], sha256: "short" };
+    assert.equal(validatePublishedRun(manifest).ok, false);
+    assert.throws(() => finalizeManifest(manifest), /SHA-256/);
   }
 });
 
@@ -100,6 +111,19 @@ test("发布验证拒绝 metadata 中缺失或不洁的渲染标志", () => {
   for (const metadata of invalidMetadata) {
     const renderAudit = { path: "render-audit.json", sha256: SHA256, metadata };
     assert.equal(validatePublishedRun(completeManifest({ renderAudit })).ok, false);
+  }
+});
+
+test("发布验证要求 renderAudit metadata.errors 是空数组", () => {
+  for (const errors of [undefined, "render failed", ["render failed"]]) {
+    const metadata = { ...CLEAN_RENDER_METADATA, errors };
+    if (errors === undefined) delete metadata.errors;
+    const manifest = completeManifest({
+      renderAudit: { path: "render-audit.json", sha256: SHA256, metadata }
+    });
+
+    assert.equal(validatePublishedRun(manifest).ok, false);
+    assert.throws(() => finalizeManifest(manifest), /errors/);
   }
 });
 

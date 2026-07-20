@@ -20,12 +20,17 @@ P1 独立审查后追加三轮 TDD：
 2. nested metadata 完整性与坏标志：RED 3/17，GREEN 17/17。
 3. `finalizeManifest` 生产接线和真实 pipeline metadata：RED 2/18，GREEN 18/18。
 
-最终定向测试：18/18。
+残留 P1/P2 复审后追加两轮 TDD：
+
+1. 六项固定相对文件名与逐项 64hex SHA：RED 2/19，GREEN 19/19。
+2. `renderAudit.metadata.errors` 必须为空数组：RED 1/20，GREEN 20/20。
+
+最终定向测试：20/20。
 
 ## 验证
 
 - `npm run test:unit`：12/12，通过。
-- `npm run test:v3`：90/90，通过。
+- `npm run test:v3`：92/92，通过。
 - v3 端到端流水线：退出码 0，生成 7 个非空产物；PNG 185,975 字节。
 - Chromium 149.0.7827.55 审计：`pageHeightValid=true`、`horizontalOverflow=false`、`tableOverflow=[]`、`replacementCharacterDetected=false`。
 - `mmx auth status`：退出码 0，认证来源为本地配置；未记录密钥。
@@ -37,6 +42,8 @@ P1 独立审查后追加三轮 TDD：
 - 根因：旧 validator 错把真实 artifact 描述对象当成原始 `render-audit.json`，从 `artifacts.renderAudit` 顶层读取审计标志；同时生产发布路径未调用它。
 - 修复：从 `artifacts.renderAudit.metadata` 读取并强制校验全部发布标志，随后由 `finalizeManifest` 统一调用。
 - 兼容：公共函数签名、返回值和 artifact 的既有字段不变；metadata 只增补 `horizontalOverflow`、`tableOverflow`、`replacementCharacterDetected`、`pageHeightValid`。旧的不完整发布清单会被拒绝，避免继续放行不可审计运行。
+- 残留路径修复：六项 artifact 共享固定 tuple，path 必须精确等于对应相对文件名且各自带 64hex SHA；输入字段名保持 `inputSnapshot`，文件名收紧为 `input-snapshot.json`。
+- 残留审计修复：`metadata.errors` 必须显式为空数组，避免 `passed=true` 与非空错误清单同时发布。
 
 ## 范围控制
 

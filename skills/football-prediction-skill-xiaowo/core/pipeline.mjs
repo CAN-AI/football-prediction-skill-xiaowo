@@ -12,13 +12,8 @@ const REQUIRED_ARTIFACTS = Object.freeze([
   ["reportMarkdown", "report.md"],
   ["reportHtml", "report-long.html"],
   ["renderAudit", "render-audit.json"],
-  ["inputSnapshot", "audited-snapshot.json"],
+  ["inputSnapshot", "input-snapshot.json"],
   ["prediction", "prediction.json"]
-]);
-const PUBLISHED_ARTIFACTS = Object.freeze([
-  ["reportMarkdown", "report.md"],
-  ["reportPng", "report-long.png"],
-  ["renderAudit", "render-audit.json"]
 ]);
 
 async function loadInput(input) {
@@ -75,13 +70,12 @@ function renderAuditErrors(audit) {
 
 export function validatePublishedRun(run) {
   const errors = [];
-  for (const [artifactName, fileName] of PUBLISHED_ARTIFACTS) {
+  for (const [artifactName, fileName] of REQUIRED_ARTIFACTS) {
     const artifact = run?.artifacts?.[artifactName];
     if (!artifact
-      || typeof artifact.path !== "string"
-      || !artifact.path.trim()
+      || artifact.path !== fileName
       || !/^[a-f0-9]{64}$/i.test(artifact.sha256 ?? "")) {
-      errors.push(`${fileName} 的 path 或 SHA-256 无效`);
+      errors.push(`${fileName} 的固定相对 path 或 SHA-256 无效`);
     }
   }
   const metadata = run?.artifacts?.renderAudit?.metadata;
@@ -89,6 +83,9 @@ export function validatePublishedRun(run) {
     errors.push("render-audit.json 缺少 metadata");
   } else {
     if (metadata.passed !== true) errors.push("render-audit.json 未通过");
+    if (!Array.isArray(metadata.errors) || metadata.errors.length) {
+      errors.push("render-audit.json metadata.errors 必须是空数组");
+    }
     if (metadata.horizontalOverflow !== false) errors.push("存在水平溢出或审计标志缺失");
     if (!Array.isArray(metadata.tableOverflow) || metadata.tableOverflow.length) {
       errors.push("存在表格溢出或审计标志缺失");
@@ -168,7 +165,7 @@ export async function runPrematchPipeline({ input, outDir } = {}) {
   }
 
   const paths = {
-    inputSnapshot: join(runDirectory, "audited-snapshot.json"),
+    inputSnapshot: join(runDirectory, "input-snapshot.json"),
     prediction: join(runDirectory, "prediction.json"),
     reportMarkdown: join(runDirectory, "report.md"),
     reportHtml: join(runDirectory, "report-long.html"),

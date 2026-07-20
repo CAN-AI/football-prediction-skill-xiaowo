@@ -48,7 +48,7 @@ const diagrams = [
     nodes: [
       ["01", "截止输入", "赛事画像 + 证据账本 + SHA-256"],
       ["02", "运行身份", "runId / parentRunId / modelVersion"],
-      ["03", "审计与预测", "audited-snapshot.json → prediction.json"],
+      ["03", "审计与预测", "input-snapshot.json → prediction.json"],
       ["04", "报告产物", "Markdown / HTML / PNG / render audit"],
       ["05", "最终清单", "逐文件路径、字节数与 SHA-256"],
       ["06", "赛后记录", "引用原 runId 与 prediction hash"],

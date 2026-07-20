@@ -1,0 +1,30 @@
+{
+  "manifest": {
+    "competitionProfile": {
+      "family": "league",
+      "competitionId": "ENG-PL",
+      "season": "2026-27",
+      "baselineVersion": "eng-pl-2026-27-r1",
+      "baseline": { "goalsPerTeam": 1.55 },
+      "homeAdvantage": 0.12,
+      "regulation": { "extraTime": false, "penalties": false, "twoLegged": false }
+    },
+    "match": {
+      "matchId": "ARS-CHE-2026-08-01",
+      "homeTeamId": "ARS",
+      "awayTeamId": "CHE",
+      "kickoffAt": "2026-08-01T15:00:00Z"
+    }
+  },
+  "snapshot": {
+    "teams": {
+      "ARS": { "rating": 1900, "attack": 1.2, "defense": 0.9 },
+      "CHE": { "rating": 1850, "attack": 1.1, "defense": 1.0 }
+    }
+  },
+  "evidenceAudit": {
+    "status": "passed",
+    "dataConfidence": { "level": "high" },
+    "accepted": []
+  }
+}

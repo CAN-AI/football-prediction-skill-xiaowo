@@ -79,6 +79,17 @@ node ./skills/football-prediction-skill-xiaowo/scripts/run-pipeline.mjs \
 
 流水线按“输入加载 → 赛事画像与清单校验 → 证据审计 → 审计快照 → 90 分钟预测 → 同源 Markdown/HTML 报告 → PNG 长图与渲染审计 → SHA-256 → 最终清单”的固定顺序运行。每次运行写入 `<out-dir>/<runId>/`；同名运行目录已存在时会直接失败，不覆写旧预测。正式完成要求 `audited-snapshot.json`、`prediction.json`、`report.md`、`report-long.html`、`report-long.png` 和 `render-audit.json` 全部存在、带 SHA-256，且渲染审计无错误，最终索引写入 `run-manifest.json`。
 
+### v3 验证与打包
+
+```bash
+npm run test:unit
+npm run test:v3
+npm run pipeline:v3:sample
+npm pack --dry-run
+```
+
+发布包使用 `package.json#files` 白名单，只包含 CLI、示例、v1/v2 Skill、v3 Skill 和验证记录；本地报告、临时渲染目录及 Superpowers 过程文件不进入包。2026-07-20 的测试总数、渲染审计、MiniMax 外部试跑状态和打包路径清单见 [v3 验证记录](./docs/v3/validation-2026-07-20.md)。
+
 ### v3 工程流程图
 
 以下三张原创红白工程图分别限定生命周期、冲突降级和不可变血缘；它们由仓库内 Playwright 脚本确定性生成，不使用第三方品牌或报告版式。

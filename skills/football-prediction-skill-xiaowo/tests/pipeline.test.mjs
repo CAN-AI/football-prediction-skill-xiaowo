@@ -7,7 +7,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { promisify } from "node:util";
-import { finalizeManifest, runPrematchPipeline } from "../core/pipeline.mjs";
+import { finalizeManifest, runPrematchPipeline, validatePublishedRun } from "../core/pipeline.mjs";
 
 const execFileAsync = promisify(execFile);
 
@@ -26,6 +26,47 @@ function completeManifest(overrides = {}) {
     }
   };
 }
+
+test("发布运行必须同时拥有 Markdown、PNG 和干净的渲染审计", () => {
+  const run = {
+    artifacts: {
+      reportMarkdown: { sha256: "a" },
+      reportPng: { sha256: "b" },
+      renderAudit: { horizontalOverflow: true }
+    }
+  };
+
+  assert.equal(validatePublishedRun(run).ok, false);
+});
+
+test("发布验证拒绝缺失 Markdown 或 PNG 哈希", () => {
+  const cleanAudit = { horizontalOverflow: false, replacementCharacterDetected: false, tableOverflow: [] };
+  const invalidArtifacts = [
+    { reportMarkdown: {}, reportPng: { sha256: "b" }, renderAudit: cleanAudit },
+    { reportMarkdown: { sha256: "a" }, reportPng: {}, renderAudit: cleanAudit },
+    { reportMarkdown: { sha256: "a" }, renderAudit: cleanAudit }
+  ];
+
+  for (const artifacts of invalidArtifacts) {
+    assert.equal(validatePublishedRun({ artifacts }).ok, false);
+  }
+});
+
+test("发布验证拒绝缺失或带坏文本和溢出的渲染审计", () => {
+  const artifacts = {
+    reportMarkdown: { sha256: "a" },
+    reportPng: { sha256: "b" }
+  };
+  const invalidAudits = [
+    undefined,
+    { horizontalOverflow: false, tableOverflow: [{}], replacementCharacterDetected: false },
+    { horizontalOverflow: false, tableOverflow: [], replacementCharacterDetected: true }
+  ];
+
+  for (const renderAudit of invalidAudits) {
+    assert.equal(validatePublishedRun({ artifacts: { ...artifacts, renderAudit } }).ok, false);
+  }
+});
 
 test("正式运行拒绝缺失长图哈希", () => {
   const manifest = {

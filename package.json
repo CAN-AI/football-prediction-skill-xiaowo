@@ -5,6 +5,13 @@
   "type": "module",
   "license": "MIT",
   "author": "小蜗搬砖",
+  "files": [
+    "bin/",
+    "examples/",
+    "skills/worldcup-prediction-skill-xiaowo/",
+    "skills/football-prediction-skill-xiaowo/",
+    "docs/v3/validation-2026-07-20.md"
+  ],
   "bin": {
     "worldcup-xiaowo": "./bin/worldcup-xiaowo.mjs",
     "football-xiaowo": "./bin/football-xiaowo.mjs"

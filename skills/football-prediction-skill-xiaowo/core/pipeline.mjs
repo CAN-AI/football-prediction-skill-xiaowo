@@ -68,6 +68,27 @@ function renderAuditErrors(audit) {
   return errors;
 }
 
+export function validatePublishedRun(run) {
+  const errors = [];
+  if (typeof run?.artifacts?.reportMarkdown?.sha256 !== "string"
+    || !run.artifacts.reportMarkdown.sha256.trim()) {
+    errors.push("缺少 Markdown 哈希");
+  }
+  if (typeof run?.artifacts?.reportPng?.sha256 !== "string"
+    || !run.artifacts.reportPng.sha256.trim()) {
+    errors.push("缺少 PNG 哈希");
+  }
+  const renderAudit = run?.artifacts?.renderAudit;
+  if (!renderAudit || typeof renderAudit !== "object") {
+    errors.push("缺少渲染审计");
+  } else {
+    if (renderAudit.horizontalOverflow === true) errors.push("存在水平溢出");
+    if (renderAudit.tableOverflow === true || renderAudit.tableOverflow?.length) errors.push("存在表格溢出");
+    if (renderAudit.replacementCharacterDetected === true) errors.push("检测到替换字符");
+  }
+  return { ok: errors.length === 0, errors };
+}
+
 async function sha256File(path) {
   return createHash("sha256").update(await readFile(path)).digest("hex");
 }

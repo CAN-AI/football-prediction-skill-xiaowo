@@ -6,7 +6,7 @@
 
 - `manifest.competitionProfile.baseline.goalsPerTeam` 是唯一的进球均值基线，必须来自已审计的同赛事画像；模型不会借用世界杯或其他赛事的固定均值。
 - `snapshot.teams` 必须以比赛主、客队 ID 为键提供 `rating`、`attack` 和 `defense` 数值。缺失数值会中止计算，不以默认球队数据填补。
-- `evidenceAudit` 只用于记录审计状态和筛选已接受的确定性调整。低置信状态只使 `confidence.level` 降为 `low`，不会生成任何补充事实。
+- `evidenceAudit.status: "passed"` 必须同时提供审计产生的 `high` 或 `medium` 置信标签；`degraded_low_confidence` 一律在结果和追溯中记为 `low`；`failed` 或未知状态会拒绝预测，且不会读取其中的 `accepted` 项。低置信状态不会生成任何补充事实。
 
 ## 已接受调整
 

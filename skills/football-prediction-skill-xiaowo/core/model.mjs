@@ -44,9 +44,17 @@ function resolveConfidence(evidenceAudit) {
     : evidenceAudit?.dataConfidence?.level;
   const status = evidenceAudit?.status;
 
-  if (status === "passed") return { level: dataConfidence ?? "high", auditStatus: status, dataConfidence: dataConfidence ?? "high" };
-  if (status === "degraded_low_confidence") return { level: "low", auditStatus: status, dataConfidence: dataConfidence ?? "low" };
-  return { level: "unavailable", auditStatus: status ?? "missing", dataConfidence: dataConfidence ?? "unavailable" };
+  if (status === "failed") throw new Error("审计失败，不能生成预测。");
+  if (status === "passed") {
+    if (!["high", "medium"].includes(dataConfidence)) {
+      throw new Error("通过审计必须提供高或中等数据置信度。");
+    }
+    return { level: dataConfidence, auditStatus: status, dataConfidence };
+  }
+  if (status === "degraded_low_confidence") {
+    return { level: "low", auditStatus: status, dataConfidence: "low" };
+  }
+  throw new Error("审计状态无效，不能生成预测。");
 }
 
 function acceptedDeterministicAdjustments(evidenceAudit) {
@@ -93,6 +101,7 @@ function resultProbabilities(scoreMatrix) {
 }
 
 export function predict90({ manifest, snapshot, evidenceAudit } = {}) {
+  const confidence = resolveConfidence(evidenceAudit);
   const baseline = manifest?.competitionProfile?.baseline?.goalsPerTeam;
   if (!Number.isFinite(baseline) || baseline <= 0) {
     throw new Error("赛事画像缺少经审计的每队进球基线。");
@@ -109,7 +118,6 @@ export function predict90({ manifest, snapshot, evidenceAudit } = {}) {
   const awayLambda = clamp(baseline * away.attack * home.defense - ratingShift + awayAdjustment, 0.25, 3.5);
   const scoreMatrix = buildScoreMatrix(homeLambda, awayLambda);
   const probabilities = resultProbabilities(scoreMatrix);
-  const confidence = resolveConfidence(evidenceAudit);
 
   return {
     modelVersion: MODEL_VERSION,

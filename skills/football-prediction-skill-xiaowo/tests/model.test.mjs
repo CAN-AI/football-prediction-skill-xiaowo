@@ -50,6 +50,45 @@ test("低置信只降低标签，不伪造补充事实", () => {
   assert.equal(prediction.adjustments.length, 0);
 });
 
+test("失败审计会在读取已接受调整前拒绝预测", () => {
+  assert.throws(() => predict90({
+    ...input,
+    evidenceAudit: {
+      status: "failed",
+      dataConfidence: "high",
+      accepted: [{
+        claimId: "forged-adjustment",
+        deterministicAdjustment: { homeLambdaDelta: 3 }
+      }]
+    }
+  }), /审计失败/);
+});
+
+test("通过审计只接受有效的高或中等置信标签", () => {
+  assert.throws(() => predict90({
+    ...input,
+    evidenceAudit: { status: "passed", dataConfidence: "low", accepted: [] }
+  }), /通过审计/);
+
+  const prediction = predict90({
+    ...input,
+    evidenceAudit: { status: "passed", dataConfidence: { level: "medium" }, accepted: [] }
+  });
+  assert.equal(prediction.confidence.level, "medium");
+  assert.equal(prediction.trace.dataConfidence, "medium");
+});
+
+test("降级审计强制在结果和追溯中使用低置信", () => {
+  const prediction = predict90({
+    ...input,
+    evidenceAudit: { status: "degraded_low_confidence", dataConfidence: "high", accepted: [] }
+  });
+
+  assert.equal(prediction.confidence.level, "low");
+  assert.equal(prediction.confidence.dataConfidence, "low");
+  assert.equal(prediction.trace.dataConfidence, "low");
+});
+
 test("仅已接受的确定性调整可入模，候选首发仍保持报告用途", () => {
   const prediction = predict90({
     ...input,

@@ -30,6 +30,7 @@ node --test skills/football-prediction-skill-xiaowo/tests/pipeline.test.mjs
 7. 模块未导出 `runPrematchPipeline`。
 8. CLI 脚本不存在，子进程以 `MODULE_NOT_FOUND` 退出。
 9. 只有 Task5 `evidenceAudit`、没有独立 ledger 时，接受事实及确定性调整丢失。
+10. 独立审查复现显式 `evidenceLedger.ledger` 为字符串时，旧 audit 被静默回退并成功定稿；回归测试报 `Missing expected rejection`。
 
 ## GREEN 记录
 
@@ -37,7 +38,7 @@ node --test skills/football-prediction-skill-xiaowo/tests/pipeline.test.mjs
 
 ```text
 node --test skills/football-prediction-skill-xiaowo/tests/pipeline.test.mjs
-tests 10, pass 10, fail 0
+tests 11, pass 11, fail 0
 ```
 
 简报指定 CLI：
@@ -54,7 +55,14 @@ node skills/football-prediction-skill-xiaowo/scripts/run-pipeline.mjs \
 
 ```text
 npm run test:v3
-tests 61, pass 61, fail 0
+tests 62, pass 62, fail 0
+```
+
+完整项目回归：
+
+```text
+npm test
+unit tests 12, pass 12, fail 0；全部样例链路退出码 0
 ```
 
 附加检查：
@@ -65,3 +73,7 @@ node --check scripts/run-pipeline.mjs          PASS
 package.json JSON 解析                         PASS
 git diff --check                               PASS
 ```
+
+## P1 审查修复
+
+`evidenceLedgerFrom()` 现在先通过字段存在性选择证据源：显式 `evidenceLedger` 或 `ledger` 只接受数组或包含 `ledger` 数组的对象，其他结构立即抛出中文错误。仅当两个显式字段均不存在时，才允许从旧 `evidenceAudit.accepted/rejected` 重建账本。专项测试同时验证了非法显式账本拒绝和无账本旧审计兼容两条路径。

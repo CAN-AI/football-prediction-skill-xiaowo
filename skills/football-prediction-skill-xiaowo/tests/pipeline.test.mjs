@@ -151,3 +151,30 @@ test("Task5 审计夹具在无独立账本时仍重新审计并绑定接受事�
     await rm(outputRoot, { recursive: true, force: true });
   }
 });
+
+test("显式非法 ledger 不得回退到旧 Task5 审计", async () => {
+  const outputRoot = await mkdtemp(join(tmpdir(), "football-pipeline-invalid-ledger-"));
+  const fixture = JSON.parse(await readFile(new URL("../assets/sample-data/club-league-snapshot.json", import.meta.url), "utf8"));
+  fixture.manifest.dataCutoffAt = "2026-08-01T10:00:00Z";
+  fixture.evidenceLedger = { ledger: "不是数组" };
+  fixture.evidenceAudit.accepted = [{
+    claimId: "legacy-injury-1",
+    topic: "injury",
+    subject: "ARS-player-9",
+    sourceTier: "club_official",
+    sourceUrl: "https://example.invalid/ars/injury",
+    publishedAt: "2026-08-01T08:00:00Z",
+    observedAt: "2026-08-01T09:00:00Z",
+    affectsModel: true,
+    reviewStatus: "accepted",
+    value: "缺席"
+  }];
+  try {
+    await assert.rejects(
+      runPrematchPipeline({ input: fixture, outDir: outputRoot }),
+      /显式证据账本结构无效/
+    );
+  } finally {
+    await rm(outputRoot, { recursive: true, force: true });
+  }
+});

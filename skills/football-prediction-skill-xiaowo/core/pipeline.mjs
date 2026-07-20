@@ -25,9 +25,15 @@ async function loadInput(input) {
 }
 
 function evidenceLedgerFrom(input) {
-  if (Array.isArray(input.evidenceLedger)) return input.evidenceLedger;
-  if (Array.isArray(input.evidenceLedger?.ledger)) return input.evidenceLedger.ledger;
-  if (Array.isArray(input.ledger)) return input.ledger;
+  for (const field of ["evidenceLedger", "ledger"]) {
+    if (!Object.hasOwn(input, field)) continue;
+    const explicitLedger = input[field];
+    if (Array.isArray(explicitLedger)) return explicitLedger;
+    if (explicitLedger && typeof explicitLedger === "object" && Array.isArray(explicitLedger.ledger)) {
+      return explicitLedger.ledger;
+    }
+    throw new Error(`显式证据账本结构无效：${field} 必须是数组或包含 ledger 数组的对象。`);
+  }
   const accepted = Array.isArray(input.evidenceAudit?.accepted) ? input.evidenceAudit.accepted : [];
   const rejected = Array.isArray(input.evidenceAudit?.rejected)
     ? input.evidenceAudit.rejected.map((item) => item?.claim).filter(Boolean)

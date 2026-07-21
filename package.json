@@ -1,7 +1,7 @@
 {
   "name": "worldcup-prediction-skill-xiaowo",
   "version": "0.1.0",
-  "description": "小蜗版世界杯比分与胜平负预测 skill、CLI、审计和复盘 harness。",
+  "description": "小蜗通用成年男足国家队与职业俱乐部预测 skill、CLI、证据审计和赛后复盘 harness。",
   "type": "module",
   "license": "MIT",
   "author": "小蜗搬砖",

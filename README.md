@@ -1,4 +1,12 @@
-# worldcup-prediction-skill-xiaowo
+# football-prediction-skill-xiaowo
+
+## 当前默认入口：通用足球预测 v3
+
+现在直接使用 `football-prediction-skill-xiaowo` 即可覆盖成年男足国家队与职业俱乐部的赛前预测、赛后复盘、联网证据审计、冲突降级、Markdown 报告和手机长图 PNG。旧版 `worldcup-prediction-skill-xiaowo` / `worldcup-xiaowo` 仅为兼容保留，不再是默认入口。
+
+Skill 路径：`skills/football-prediction-skill-xiaowo/`  
+CLI：`football-xiaowo`  
+一句话调用示例：`使用最新 football-prediction-skill-xiaowo，联网分析指定比赛并输出 Markdown 与手机长图 PNG。`
 
 小蜗版世界杯预测模型 harness：一个可审计、可复盘、可安装的 `skill + CLI + 文档 + 示例数据` 项目。它面向国内 agent 和 AI 爱好者，重点不是“神预测”，而是把一场足球预测拆成可解释、可复核、可重跑、可修正的工程流程。
 

@@ -1,6 +1,6 @@
 ---
 name: football-prediction-skill-xiaowo
-description: 面向联赛、国内杯赛、洲际俱乐部赛事、国家队赛事和友谊赛的可审计足球预测工作流。需要建立或执行通用足球赛前预测、核查赛事范围、保留输入证据、生成 Markdown 与 PNG 报告或进行赛后复盘时使用。
+description: Use when analyzing adult men's national-team or professional-club football before or after a match, especially when web research, audited probabilities, conflict handling, Markdown reports, or mobile PNG reports are required.
 ---
 
 # 小蜗通用足球预测 v3

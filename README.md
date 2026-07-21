@@ -1,4 +1,12 @@
-# worldcup-prediction-skill-xiaowo
+# football-prediction-skill-xiaowo
+
+## 当前默认入口：通用足球预测 v3
+
+现在直接使用 `football-prediction-skill-xiaowo` 即可覆盖成年男足国家队与职业俱乐部的赛前预测、赛后复盘、联网证据审计、冲突降级、Markdown 报告和手机长图 PNG。旧版 `worldcup-prediction-skill-xiaowo` / `worldcup-xiaowo` 仅为兼容保留，不再是默认入口。
+
+Skill 路径：`skills/football-prediction-skill-xiaowo/`  
+CLI：`football-xiaowo`  
+一句话调用示例：`使用最新 football-prediction-skill-xiaowo，联网分析指定比赛并输出 Markdown 与手机长图 PNG。`
 
 小蜗版世界杯预测模型 harness：一个可审计、可复盘、可安装的 `skill + CLI + 文档 + 示例数据` 项目。它面向国内 agent 和 AI 爱好者，重点不是“神预测”，而是把一场足球预测拆成可解释、可复核、可重跑、可修正的工程流程。
 
@@ -55,6 +63,84 @@ worldcup-xiaowo pipeline --data ./examples/snapshots/sample-worldcup-snapshot.js
 
 ```powershell
 Copy-Item -Recurse .\skills\worldcup-prediction-skill-xiaowo "$env:USERPROFILE\.codex\skills\worldcup-prediction-skill-xiaowo"
+```
+
+## v3 通用足球预测骨架
+
+v3 新增独立的 `football-prediction-skill-xiaowo`，覆盖联赛、国内杯赛、洲际俱乐部赛事、国家队赛事和友谊赛。它保留现有世界杯 v1 快速开始、`worldcup-xiaowo` 命令和原有语义；新的发布入口 `football-xiaowo` 会把 `audit`、`predict`、`report`、`pipeline`、`record`、`calibrate` 分发到对应 v3 脚本。
+
+验证 v3 骨架：
+
+```bash
+npm run test:v3
+```
+
+运行 v3 赛前正式流水线：
+
+```bash
+npm run pipeline:v3:sample
+# 或
+node ./skills/football-prediction-skill-xiaowo/scripts/run-pipeline.mjs \
+  --input ./skills/football-prediction-skill-xiaowo/assets/sample-data/club-league-snapshot.json \
+  --out-dir ./.tmp-v3-pipeline
+```
+
+安装包后也可直接使用根 CLI；参数与对应脚本完全一致：
+
+```bash
+football-xiaowo audit --ledger ./skills/football-prediction-skill-xiaowo/assets/sample-data/league-evidence.json --out ./audit.json
+football-xiaowo predict --input ./skills/football-prediction-skill-xiaowo/assets/sample-data/club-league-snapshot.json --out ./prediction.json
+football-xiaowo report --fixture ./skills/football-prediction-skill-xiaowo/assets/sample-data/club-league-snapshot.json --out-dir ./.tmp-v3-report
+football-xiaowo report --run-dir <赛后运行目录> --prematch-run-dir <父赛前运行目录>
+football-xiaowo pipeline --input ./skills/football-prediction-skill-xiaowo/assets/sample-data/club-league-snapshot.json --out-dir ./.tmp-v3-pipeline
+football-xiaowo record --manifest <run-manifest.json> --prediction <prediction.json> --facts <facts.json> --out <record.json>
+football-xiaowo calibrate --runs ./postmatch-runs.json --out ./calibration-proposal.json
+```
+
+流水线按“输入加载 → 赛事画像与清单校验 → 证据审计 → 独立账本/审计 → 审计快照 → 90 分钟预测 → 同源 Markdown/HTML 报告 → PNG 长图与渲染审计 → SHA-256 → 最终清单”的固定顺序运行。每次运行写入 `<out-dir>/<runId>/`；同名运行目录已存在时会直接失败，不覆写旧预测。正式完成要求 `evidence-ledger.json`、`audit.json`、`input-snapshot.json`、`prediction.json`、`report.md`、`report-long.html`、`report-long.png` 和 `render-audit.json` 全部使用固定相对文件名、带字节数与 SHA-256，且渲染审计无错误，最终索引写入 `run-manifest.json`。
+
+赛后正式发布使用父赛前运行目录创建新的 `postmatch` 子运行，不回写赛前目录：
+
+```bash
+node ./skills/football-prediction-skill-xiaowo/scripts/run-postmatch-pipeline.mjs \
+  --prematch-run-dir <赛前运行目录> \
+  --input ./skills/football-prediction-skill-xiaowo/assets/sample-data/postmatch-input.json \
+  --out-dir ./.tmp-v3-postmatch
+```
+
+赛后 `report` 命令只复验已定稿父子运行，不接受可编辑 postmatch fixture；它重建 Markdown/HTML、临时重渲染 PNG 并逐字节比较，不重写正式报告。校准索引 `postmatch-runs.json` 的每项只包含 `postmatchRunDir` 与 `prematchRunDir`；CLI 会重新校验全部 SHA、内外层 manifest、父子关系、父运行入模证据与重算预测、赛果证据、审计及重算记录。画像键 v2 包含实际进球基线与主场优势，不能用不同 lambda 配置或自报质量字段凑足 30 场。
+
+### v3 验证与打包
+
+```bash
+npm run test:unit
+npm run test:v3
+npm run pipeline:v3:sample
+npm pack --dry-run
+```
+
+发布包使用 `package.json#files` 白名单，包含 CLI、示例、v1/v2 Skill、v3 Skill、README 引用的 v1 根文档/图片和 v3 验证记录；本地报告、临时渲染目录、Superpowers 过程文件及内部计划不进入包。2026-07-20 的测试总数、渲染审计、MiniMax 外部试跑状态和打包路径清单见 [v3 验证记录](./docs/v3/validation-2026-07-20.md)。
+
+### v3 工程流程图
+
+以下三张原创红白工程图分别限定生命周期、冲突降级和不可变血缘；它们由仓库内 Playwright 脚本确定性生成，不使用第三方品牌或报告版式。
+
+<p align="center">
+  <img src="skills/football-prediction-skill-xiaowo/assets/v3-lifecycle-flow.png" alt="v3 可审计预测生命周期" width="100%">
+</p>
+
+<p align="center">
+  <img src="skills/football-prediction-skill-xiaowo/assets/v3-conflict-degrade-flow.png" alt="v3 证据冲突与低置信降级" width="100%">
+</p>
+
+<p align="center">
+  <img src="skills/football-prediction-skill-xiaowo/assets/v3-lineage-flow.png" alt="v3 不可变运行血缘" width="100%">
+</p>
+
+跨 Agent 能力预检、无网络回退、缺失资料上传与赛事画像规则见 [v3 Skill 使用说明](./skills/football-prediction-skill-xiaowo/SKILL.md)。重绘流程图：
+
+```bash
+node ./skills/football-prediction-skill-xiaowo/scripts/render-flowcharts.mjs
 ```
 
 ## 概率是根据什么来的

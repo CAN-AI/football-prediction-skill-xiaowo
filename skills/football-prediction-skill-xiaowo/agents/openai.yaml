@@ -1,0 +1,4 @@
+interface:
+  display_name: "小蜗通用足球预测"
+  short_description: "覆盖联赛、杯赛与国家队赛事的可审计通用足球预测流程"
+  default_prompt: "使用 $football-prediction-skill-xiaowo 为一场足球比赛建立可审计的预测流程。"

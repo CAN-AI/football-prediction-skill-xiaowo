@@ -1,0 +1,48 @@
+{
+  "match": {
+    "matchId": "ARS-CHE-2026-08-01",
+    "homeTeamId": "ARS",
+    "awayTeamId": "CHE",
+    "kickoffAt": "2026-08-01T15:00:00Z"
+  },
+  "cutoffAt": "2026-08-01T10:00:00Z",
+  "ledger": [
+    {
+      "claimId": "schedule-ars-che",
+      "topic": "schedule",
+      "subject": "ARS-CHE-2026-08-01",
+      "sourceTier": "official",
+      "sourceUrl": "https://example.invalid/competition/fixtures/ars-che",
+      "publishedAt": "2026-07-01T09:00:00Z",
+      "observedAt": "2026-08-01T09:30:00Z",
+      "affectsModel": true,
+      "reviewStatus": "accepted",
+      "value": "2026-08-01T15:00:00Z"
+    },
+    {
+      "claimId": "regulation-league",
+      "topic": "regulation",
+      "subject": "ENG-PL-2026-27",
+      "sourceTier": "competition_official",
+      "sourceUrl": "https://example.invalid/competition/regulations",
+      "publishedAt": "2026-07-01T09:00:00Z",
+      "observedAt": "2026-08-01T09:31:00Z",
+      "affectsModel": true,
+      "reviewStatus": "accepted",
+      "value": { "extraTime": false, "penalties": false }
+    },
+    {
+      "claimId": "ars-xg-provider-a",
+      "topic": "xg",
+      "subject": "ARS",
+      "sourceTier": "data_provider",
+      "sourceUrl": "https://example.invalid/data/xg/ars",
+      "publishedAt": "2026-08-01T08:00:00Z",
+      "observedAt": "2026-08-01T09:32:00Z",
+      "affectsModel": true,
+      "reviewStatus": "accepted",
+      "metricDefinitionVersion": "provider-a-2026",
+      "value": 1.42
+    }
+  ]
+}

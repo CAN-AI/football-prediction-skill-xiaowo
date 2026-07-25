@@ -4,6 +4,8 @@
 
 现在直接使用 `football-prediction-skill-xiaowo` 即可覆盖成年男足国家队与职业俱乐部的赛前预测、赛后复盘、联网证据审计、冲突降级、Markdown 报告和手机长图 PNG。旧版 `worldcup-prediction-skill-xiaowo` / `worldcup-xiaowo` 仅为兼容保留，不再是默认入口。
 
+GitHub 仓库：`https://github.com/CAN-AI/football-prediction-skill-xiaowo`
+
 Skill 路径：`skills/football-prediction-skill-xiaowo/`  
 CLI：`football-xiaowo`  
 一句话调用示例：`使用最新 football-prediction-skill-xiaowo，联网分析指定比赛并输出 Markdown 与手机长图 PNG。`
@@ -35,8 +37,9 @@ CLI：`football-xiaowo`
 环境要求：Node.js 18 或更高版本。
 
 ```bash
-git clone <your-repo-url>
-cd worldcup-prediction-skill-xiaowo
+git clone --depth 1 --branch main https://github.com/CAN-AI/football-prediction-skill-xiaowo.git
+cd football-prediction-skill-xiaowo
+npm install
 npm test
 ```
 
